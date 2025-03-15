@@ -1,0 +1,1461 @@
+#--- BEGIN controller.py ---#
+from inputs import MidiSlider, BankButton
+from midi import midi_manager
+import constants as cfg
+
+class MidiController:
+    """
+    Controls the interaction between hardware inputs (sliders and buttons) and MIDI output.
+
+    Responsibilities:
+    - Reading input states (buttons/sliders).
+    - Mapping change events to MIDI control change (CC) messages.
+    - Managing active and locked banks.
+    """
+
+    def __init__(self, slider_pins, button_pins):
+        """
+        Initialize the MidiController with slider and button pins.
+        """
+        self.sliders = []
+        self.buttons = []
+        self.slider_pins = slider_pins
+        self.button_pins = button_pins
+
+        # Tracking
+        self.is_muted = False
+        self.current_bank_group_idx = 0
+        self.current_bank_idx = 0  # determined by if any buttons are held. 0 is global.
+        self.additional_bank_indicies = []
+        self.longest_held_button_idx = 0
+        self.has_anything_changed = False
+        self.locked_bank_idx = -1
+        self.jump_mode_enabled = False
+        self.unlock_pending = False
+
+        # Setup
+        self.setup_sliders()
+        self.setup_buttons()
+        self.setup_cc_banks()
+
+    def setup_sliders(self):
+        """
+        Initializes the slider objects using the given slider pins.
+        """
+        for idx, pin in enumerate(self.slider_pins):
+            self.sliders.append(MidiSlider(pin, idx))
+
+    def setup_buttons(self):
+        """
+        Initializes the button objects using the given button pins.
+        """
+        for pin in self.button_pins:
+            self.buttons.append(BankButton(pin))
+
+    def update_inputs(self):
+        """
+        Updates all sliders and buttons and sets 'has_anything_changed' if any input changed.
+        Returns:
+            bool: True if any slider or button changed state, False otherwise.
+        """
+        slider_changes = [slider.update() for slider in self.sliders]
+        button_changes = [button.update() for button in self.buttons]
+        self.has_anything_changed = any(slider_changes + button_changes)
+        return self.has_anything_changed
+
+    def process_inputs(self):
+        """
+        Processes input changes. Determines if any bank/bank-group changes are needed.
+        Also checks if Jump Mode should toggle based on button events.
+        """
+        if not self.has_anything_changed:
+            return
+
+        self.handle_lock_changes()
+
+        top_button = self.buttons[-1]
+        middle_button_T = self.buttons[1]
+        middle_button_B = self.buttons[2]
+        bottom_button = self.buttons[0]
+
+        top_hold_time = top_button.hold_time
+        top_was_long_held = top_button.was_long_held
+        top_new_release = top_button.detected_new_release
+
+        bottom_hold_time = bottom_button.hold_time
+        bottom_was_long_held = bottom_button.was_long_held
+        bottom_new_release = bottom_button.detected_new_release
+
+        # Switch to next bank group if bottom is held, top is released
+        if bottom_hold_time > 0 and top_new_release and not top_was_long_held:
+            self.next_bank_group()
+            self.unlock_bank()
+            return
+
+        # Switch to previous bank group if top is held, bottom is released
+        if top_hold_time > 0 and bottom_new_release and not bottom_was_long_held:
+            self.previous_bank_group()
+            self.unlock_bank()
+            return
+
+        # Check for Jump Mode
+        middle_buttons_held = (middle_button_T.hold_time > 0) and (middle_button_B.hold_time > 0)
+        if middle_buttons_held:
+            if top_new_release and not top_was_long_held:
+                self.jump_mode_enabled = not self.jump_mode_enabled
+                return  # Exit after toggling jump mode
+
+            if bottom_new_release and not bottom_was_long_held:
+                self.jump_mode_enabled = not self.jump_mode_enabled
+                return  # Exit after toggling jump mode
+
+        self.update_active_bank()
+        self.send_cc_messages()
+
+    def handle_lock_changes(self):
+        """
+        Checks if any button was double-pressed to lock/unlock the corresponding bank.
+        Also handles unlocking once all buttons are released, if 'unlock_pending' is set.
+        """
+        # Check button states
+        all_buttons_released = all(not button.pressed for button in self.buttons)
+        any_new_button_press = any(button.detected_new_press for button in self.buttons)
+        
+        # Step 1: Set unlock_pending when all buttons are released after a lock
+        if self.locked_bank_idx != -1 and all_buttons_released and not self.unlock_pending:
+            self.unlock_pending = True
+            print("Setting unlock_pending to True - all buttons released")
+        
+        # Step 2: Check for double-press events to lock/unlock
+        for idx, button in enumerate(self.buttons):
+            if button.was_double_pressed:
+                if self.locked_bank_idx == idx:
+                    self.unlock_bank()
+                    print(f"Unlocking bank {idx} via double-press")
+                else:
+                    self.lock_bank(idx)
+                    print(f"Locking bank {idx}")
+                return
+        
+        # Step 3: Check for new button press after unlock_pending is set
+        if self.unlock_pending and any_new_button_press:
+            self.unlock_bank()
+            print("Unlocking bank via new button press")
+            return
+
+    def lock_bank(self, bank_idx):
+        """
+        Locks the given bank index and updates the active bank accordingly.
+        """
+        self.locked_bank_idx = bank_idx
+        self.unlock_pending = False
+        self.update_active_bank()
+
+    def unlock_bank(self):
+        """
+        Unlocks any currently locked bank and updates the active bank.
+        """
+        if self.locked_bank_idx != -1:
+            self.locked_bank_idx = -1
+            self.unlock_pending = False
+            self.update_active_bank()
+
+    def send_cc_messages(self):
+        """
+        Sends CC messages for any slider whose value changed, if 'should_send_cc' returns True.
+        """
+        for slider in self.sliders:
+            if slider.cc_value_changed:
+                cc_numbers = [slider.current_assigned_cc_number] + slider.additional_assigned_cc_numbers
+                if self.should_send_cc(slider):
+                    midi_manager.send_cc(cc_numbers, slider.cc_value)
+                    slider.cc_value_changed = False
+
+    def should_send_cc(self, slider):
+        """
+        Determines whether a CC message should be sent based on pickup mode logic.
+        
+        This method implements "pickup mode" where sliders only send CC values after 
+        physically crossing the last sent value, preventing sudden jumps in parameter values.
+        
+        Args:
+            slider (MidiSlider): The slider object to check
+            
+        Returns:
+            bool: True if a CC message should be sent, False otherwise
+        """
+        cc_number = slider.current_assigned_cc_number
+        last_cc_sent = midi_manager.get_last_cc_value_sent(cc_number)
+        cc_value = slider.cc_value
+
+        # Jump Mode always allows sending values immediately
+        if self.jump_mode_enabled:
+            return True
+            
+        # First-time initialization of crossing values
+        if slider.crossing_cc_value == -1:
+            slider.crossing_cc_value = cc_value
+            slider.has_crossed_last_cc_value = False
+            return False
+            
+        # Special handling for min/max edge values
+        if last_cc_sent == cfg.MIN_CC_VALUE and cfg.MIN_CC_VALUE <= cc_value <= 2:
+            slider.has_crossed_last_cc_value = True
+            return True
+            
+        if last_cc_sent == cfg.MAX_CC_VALUE and 125 <= cc_value <= cfg.MAX_CC_VALUE:
+            slider.has_crossed_last_cc_value = True
+            return True
+            
+        # Once crossed threshold, continue sending all values
+        if slider.has_crossed_last_cc_value:
+            return True
+            
+        # Check if slider has crossed the last value from either direction
+        crossed_from_above = cc_value < last_cc_sent < slider.crossing_cc_value
+        crossed_from_below = cc_value > last_cc_sent > slider.crossing_cc_value
+        
+        if crossed_from_above or crossed_from_below:
+            slider.has_crossed_last_cc_value = True
+            return True
+            
+        # Skip small changes within the deadband
+        if abs(cc_value - last_cc_sent) < cfg.CC_THRESHOLD:
+            return False
+            
+        # Update tracking value for future comparisons
+        slider.crossing_cc_value = cc_value
+        return False
+
+    def update_held_button_indicies(self):
+        """
+        Updates 'additional_bank_indicies' based on pressed buttons, 
+        and sets 'longest_held_button_idx' for the current held button with the highest hold time.
+        """
+        self.additional_bank_indicies = []
+        max_hold_time = 0
+        max_hold_time_idx = -1
+
+        for idx, button in enumerate(self.buttons):
+            if button.pressed:
+                self.additional_bank_indicies.append(idx)
+            if button.hold_time > max_hold_time:
+                max_hold_time = button.hold_time
+                max_hold_time_idx = idx
+
+        self.longest_held_button_idx = max_hold_time_idx
+        return self.additional_bank_indicies
+
+    def update_active_bank(self):
+        """
+        Decides which bank is active based on locked bank index or whichever button has the max hold time.
+        Then updates slider CC assignments if necessary.
+        """
+        previous_bank_idx = self.current_bank_idx
+        previous_additional_indicies = list(self.additional_bank_indicies)
+
+        self.update_held_button_indicies()
+
+        if self.locked_bank_idx != -1:
+            self.current_bank_idx = self.locked_bank_idx
+        else:
+            self.current_bank_idx = self.longest_held_button_idx
+
+        # Reassign CC numbers if we switched banks or changed held-button indices
+        if (previous_bank_idx != self.current_bank_idx 
+            or previous_additional_indicies != self.additional_bank_indicies):
+            self.update_slider_cc_assignments()
+
+    def update_slider_cc_assignments(self):
+        """
+        Updates each slider's CC assignments based on the current active bank.
+        
+        This method:
+        1. Assigns the primary CC number from the current bank
+        2. Adds any additional CC numbers from simultaneously held buttons
+        3. Resets pickup-mode tracking values to ensure smooth transitions
+        """
+        current_cc_bank = self.get_current_cc_bank()
+
+        for idx, slider in enumerate(self.sliders):
+            # Step 1: Assign primary CC number
+            if self.current_bank_idx == -1:
+                # Global bank
+                slider.current_assigned_cc_number = cfg.GLOBAL_CC_BANK[idx]
+                slider.additional_assigned_cc_numbers = []
+            else:
+                # Bank from current group
+                slider.current_assigned_cc_number = current_cc_bank[idx]
+                
+                # Step 2: Add any secondary CC assignments from additional held buttons
+                if self.additional_bank_indicies:
+                    slider.additional_assigned_cc_numbers = self.get_additional_cc_numbers(idx)
+                else:
+                    slider.additional_assigned_cc_numbers = []
+
+            # Step 3: Reset pickup mode tracking to prevent unwanted CC jumps
+            last_cc_sent = midi_manager.get_last_cc_value_sent(slider.current_assigned_cc_number)
+            slider.crossing_cc_value = last_cc_sent
+            slider.has_crossed_last_cc_value = False
+            slider.cc_value_changed = False
+
+    def setup_cc_banks(self):
+        """
+        Prepares the main and per-group CC banks.
+        """
+        self.global_cc_bank = cfg.GLOBAL_CC_BANK
+
+        self.cc_bank_groups = cfg.CC_BANK_GROUPS
+
+        # Default global CC assignments
+        for idx, slider in enumerate(self.sliders):
+            slider.current_assigned_cc_number = self.global_cc_bank[idx]
+
+    def get_current_cc_bank(self):
+        """
+        Returns the CC bank list for the currently active bank index,
+        or the global CC bank if current_bank_idx is -1.
+        """
+        if self.current_bank_idx == -1:
+            return self.global_cc_bank
+        return self.cc_bank_groups[self.current_bank_group_idx][self.current_bank_idx]
+
+    def get_additional_cc_numbers(self, idx):
+        """
+        Returns extra CC numbers from other held buttons' banks for the slider at 'idx'.
+        """
+        additional_cc_numbers = []
+        for button_idx in self.additional_bank_indicies:
+            bank = self.cc_bank_groups[self.current_bank_group_idx][button_idx]
+            additional_cc_numbers.append(bank[idx])
+        return additional_cc_numbers
+
+    def next_bank_group(self):
+        """
+        Moves to the next bank group if available (no wrap-around).
+        """
+        new_idx = self.current_bank_group_idx + 1
+        if new_idx <= 3:
+            self.current_bank_group_idx = new_idx
+
+    def previous_bank_group(self):
+        """
+        Moves to the previous bank group if available (no wrap-around).
+        """
+        new_idx = self.current_bank_group_idx - 1
+        if new_idx >= 0:
+            self.current_bank_group_idx = new_idx
+#--- END controller.py ---#
+
+#--- BEGIN settings.json ---#
+{
+    "GLOBAL_CC_BANK": [0, 1, 2, 3],
+    "CC_BANKS_1": [
+        [4, 5, 6, 7],
+        [8, 9, 10, 11],
+        [12, 13, 14, 15],
+        [16, 17, 18, 19]
+    ],
+    "CC_BANKS_2": [
+        [20, 21, 22, 23],
+        [24, 25, 26, 27],
+        [28, 29, 30, 31],
+        [32, 33, 34, 35]
+    ],
+    "CC_BANKS_3": [
+        [36, 37, 38, 39],
+        [40, 41, 42, 43],
+        [44, 45, 46, 47],
+        [48, 49, 50, 51]
+    ],
+    "CC_BANKS_4": [
+        [52, 53, 54, 55],
+        [56, 57, 58, 59],
+        [60, 61, 62, 63],
+        [64, 65, 66, 67]
+    ]
+}
+#--- END settings.json ---#
+
+#--- BEGIN boot.py ---#
+import storage
+import board
+import digitalio
+import time
+import microcontroller
+
+# Overclock the CPU to 120 MHz
+microcontroller.cpu.frequency = 270_000_000
+
+# Check if all buttons are pressed during boot
+def check_all_buttons_pressed():
+    # Define the button pins
+    button_pins = [
+        board.GP0,
+        board.GP1,
+        board.GP2,
+        board.GP3,
+    ]
+
+    # Initialize all buttons
+    buttons = []
+    for pin in button_pins:
+        button = digitalio.DigitalInOut(pin)
+        button.direction = digitalio.Direction.INPUT
+        button.pull = digitalio.Pull.UP
+        buttons.append(button)
+    
+    # Wait a moment for things to settle
+    time.sleep(0.1)
+    
+    # Check if all buttons are pressed (LOW because of pull-up resistors)
+    all_pressed = all(not button.value for button in buttons)
+    
+    # De-initialize all buttons to not interfere with main program
+    for button in buttons:
+        button.deinit()
+    
+    return all_pressed
+
+# Set the filesystem to read-only if all buttons are pressed
+storage.remount("/", readonly=check_all_buttons_pressed())
+
+# Print a message to the console for debugging
+if storage.getmount("/").readonly:
+    print("Filesystem is READ-ONLY mode! (All buttons were held during boot)")
+else:
+    print("Filesystem is in READ-WRITE mode (Normal operation)")
+#--- END boot.py ---#
+
+#--- BEGIN midi.py ---#
+import adafruit_midi
+from adafruit_midi.control_change import ControlChange
+import busio
+import board
+import usb_midi
+
+MIDI_AUX_TX_PIN = board.GP16
+MIDI_AUX_RX_PIN = board.GP17
+
+class MidiManager:
+    """
+    Manages sending and tracking MIDI CC messages over both USB and TRS MIDI.
+    """
+
+    def __init__(self):
+        # Initialize last known CC values to something other than 0
+        self.last_cc_values_sent = [16] * 128
+
+        # Set up the UART and MIDI interfaces
+        uart = busio.UART(
+            MIDI_AUX_TX_PIN,
+            MIDI_AUX_RX_PIN,
+            baudrate=31250,
+            timeout=0.001
+        )
+        self.midi = adafruit_midi.MIDI(midi_out=usb_midi.ports[1], out_channel=1)
+        self.trs_midi = adafruit_midi.MIDI(
+            midi_in=uart,
+            midi_out=uart,
+            in_channel=1,
+            out_channel=1,
+            debug=False,
+        )
+
+    def has_cc_value_changed(self, cc_number, cc_value):
+        """
+        Checks whether the given CC number's value differs from the last value sent.
+        """
+        return cc_value != self.last_cc_values_sent[cc_number]
+
+    def send_cc(self, cc_list, cc_value):
+        """
+        Sends Control Change messages for all given CC numbers, but only if their values changed.
+        """
+        cc_objects = []
+        for cc_number in cc_list:
+            if self.has_cc_value_changed(cc_number, cc_value):
+                self.last_cc_values_sent[cc_number] = cc_value
+                print(f"Sending CC {cc_number} with value {cc_value}")
+                cc_objects.append(ControlChange(cc_number, cc_value))
+
+        if cc_objects:
+            self.midi.send(cc_objects)
+            self.trs_midi.send(cc_objects)
+
+    def get_last_cc_value_sent(self, cc_number):
+        """
+        Retrieves the last CC value sent for a specified CC number.
+
+        Args:
+            cc_number (int): CC number to look up.
+
+        Returns:
+            int: The last CC value sent for that CC number.
+        """
+        return self.last_cc_values_sent[cc_number]
+
+# Instantiate the global MidiManager
+midi_manager = MidiManager()
+
+#--- END midi.py ---#
+
+#--- BEGIN constants.py ---#
+from settings import settings
+
+# Thresholds
+LONG_HOLD_THRESH_S = 0.5
+DOUBLE_PRESS_TIME = 0.3  # Time in seconds to detect double press
+
+# Smoothing factors
+SLOW_SMOOTHING_FACTOR = 0.2
+FAST_SMOOTHING_FACTOR = 0.85
+MOVEMENT_THRESHOLD = 1000
+
+# Middle Range Noise Reduction
+MIDDLE_RANGE_START = 30000
+MIDDLE_RANGE_END = 40000
+MIDDLE_RANGE_SMOOTHING_FACTOR = 0.05
+
+# CC Threshold
+CC_THRESHOLD = 2
+
+# CC Value Range
+MIN_CC_VALUE = 0
+MAX_CC_VALUE = 127
+
+# # Global CC Bank
+# GLOBAL_CC_BANK = [0, 1, 2, 3]
+
+# # CC Banks
+# CC_BANKS_1 = [
+#     [4, 5, 6, 7],
+#     [8, 9, 10, 11],
+#     [12, 13, 14, 15],
+#     [16, 17, 18, 19],
+# ]
+# CC_BANKS_2 = [
+#     [20, 21, 22, 23],
+#     [24, 25, 26, 27],
+#     [28, 29, 30, 31],
+#     [32, 33, 34, 35],
+# ]
+# CC_BANKS_3 = [
+#     [36, 37, 38, 39],
+#     [40, 41, 42, 43],
+#     [44, 45, 46, 47],
+#     [48, 49, 50, 51],
+# ]
+# CC_BANKS_4 = [
+#     [52, 53, 54, 55],
+#     [56, 57, 58, 59],
+#     [60, 61, 62, 63],
+#     [64, 65, 66, 67],
+# ]
+
+# CC_BANK_GROUPS = [
+#     CC_BANKS_1,
+#     CC_BANKS_2,
+#     CC_BANKS_3,
+#     CC_BANKS_4,
+# ]
+
+# Global CC Bank and CC Banks from settings
+GLOBAL_CC_BANK = settings.get_global_cc_bank()
+CC_BANK_GROUPS = settings.get_all_cc_bank_groups()
+
+# Colors
+GLOBAL_BANK_COLOR = (200, 155, 55)  # A separate color for the global bank
+JUMP_MODE_COLOR = (255, 165, 0)     # Orange for jump mode
+REG_MODE_COLOR = (0, 255, 0)        # Green for regular mode
+BANK_GROUP_INDICATOR_COLOR = (255, 255, 255)  # White for bank group indicator
+
+COLORS = {
+    "WHITE": (255, 255, 255),
+    "RED": (255, 0, 0),
+    "GREEN": (0, 255, 0),
+    "BLUE": (0, 0, 255),
+    "CYAN": (0, 255, 255),
+    "MAGENTA": (255, 0, 255),
+    "ORANGE": (255, 140, 0),
+    "LIME": (0, 255, 0),
+    "TEAL": (0, 128, 128),
+    "NAVY": (0, 0, 128),
+    "BROWN": (165, 42, 42),
+    "GOLD": (255, 200, 0),
+    "YELLOW": (255, 255, 0),
+    "INDIGO": (75, 0, 130),
+    "CORAL": (255, 127, 80),
+    "FUCHSIA": (255, 0, 255),
+    "TOMATO": (255, 85, 65),
+}
+BANK_GROUPS_COLORS = [
+    [COLORS["RED"], COLORS["GREEN"], COLORS["BLUE"], COLORS["YELLOW"]],
+    [COLORS["CYAN"], COLORS["MAGENTA"], COLORS["ORANGE"], COLORS["LIME"]],
+    [COLORS["TEAL"], COLORS["NAVY"], COLORS["BROWN"], COLORS["GOLD"]],
+    [COLORS["INDIGO"], COLORS["CORAL"], COLORS["FUCHSIA"], COLORS["TOMATO"]],
+]
+#--- END constants.py ---#
+
+#--- BEGIN code.py ---#
+import time
+import board
+import digitalio
+import analogio
+import microcontroller
+
+from controller import MidiController
+from lights import LightsManager
+
+# Slider inputs
+slider_pins = [
+    analogio.AnalogIn(board.A0),
+    analogio.AnalogIn(board.A1),
+    analogio.AnalogIn(board.A2),
+    analogio.AnalogIn(board.A3),
+]
+
+# Button inputs
+button_pins = [
+    digitalio.DigitalInOut(board.GP0),
+    digitalio.DigitalInOut(board.GP1),
+    digitalio.DigitalInOut(board.GP2),
+    digitalio.DigitalInOut(board.GP3),
+]
+
+for pin in button_pins:
+    pin.direction = digitalio.Direction.INPUT
+    pin.pull = digitalio.Pull.UP
+
+# Initialize controller and lights
+midi_controller = MidiController(slider_pins, button_pins)
+lights_manager = LightsManager()
+lights_manager.startup_animation()
+
+print(f"clock freq: {microcontroller.cpu.frequency}")
+
+# Main loop
+while True:
+    prev_bank_group_idx = midi_controller.current_bank_group_idx
+
+    midi_controller.update_inputs()
+    midi_controller.process_inputs()
+
+    bank_idx = midi_controller.current_bank_idx
+    bank_group_idx = midi_controller.current_bank_group_idx
+    locked_bank_idx = midi_controller.locked_bank_idx
+    jump_mode_enabled = midi_controller.jump_mode_enabled
+    sliders = midi_controller.sliders
+    buttons = midi_controller.buttons
+
+    # Update slider lights
+    lights_manager.update_slider_lights(sliders, bank_idx, bank_group_idx)
+
+    if locked_bank_idx != -1:
+        lights_manager.indicate_locked_bank(bank_group_idx, locked_bank_idx)
+    else:
+        force_bank_indicator = (prev_bank_group_idx != bank_group_idx)
+        lights_manager.update_buttons(buttons, bank_group_idx, locked_bank_idx, force_bank_indicator)
+
+    lights_manager.indicate_jump_mode(jump_mode_enabled)
+    lights_manager.show_pixels()
+    time.sleep(0.0001)
+#--- END code.py ---#
+
+#--- BEGIN inputs.py ---#
+import analogio
+import digitalio
+import board
+import time
+from adafruit_debouncer import Button, Debouncer
+import constants as cfg
+
+class MidiSlider:
+    def __init__(self, analog_pin, slider_index):
+        """
+        Represents a single MIDI slider with smoothing logic and CC value handling.
+
+        Args:
+            analog_pin (analogio.AnalogIn): The analog pin attached to the slider.
+            slider_index (int): The index of this slider.
+        """
+        self.analog_pin = analog_pin
+        self.last_value = 0
+        self.current_value = 0
+        self.smoothed_value = 0
+        self.cc_value = 0
+        self.last_cc_value = -1
+        self.cc_value_changed = False
+        self.index = slider_index
+        self.current_assigned_cc_number = -1
+        self.additional_assigned_cc_numbers = []
+        self.crossing_cc_value = -1        # Set this whenever bank changes (last CC value sent).
+        self.has_crossed_last_cc_value = False
+
+        # Smoothing factors
+        self.slow_smoothing_factor = cfg.SLOW_SMOOTHING_FACTOR
+        self.fast_smoothing_factor = cfg.FAST_SMOOTHING_FACTOR
+        self.movement_threshold = cfg.MOVEMENT_THRESHOLD
+
+        # Middle Range Noise Reduction
+        self.middle_range_start = cfg.MIDDLE_RANGE_START
+        self.middle_range_end = cfg.MIDDLE_RANGE_END
+        self.middle_range_smoothing_factor = cfg.MIDDLE_RANGE_SMOOTHING_FACTOR
+
+        # CC Threshold
+        self.cc_threshold = cfg.CC_THRESHOLD
+
+    def update(self):
+        """
+        Reads the current analog value, applies smoothing, and calculates the resulting CC value.
+        Sets cc_value_changed to True if the new CC value is different from the old one.
+
+        Returns:
+            bool: True if cc_value_changed, otherwise False.
+        """
+        self.current_value = 65536 - self.analog_pin.value
+        value_difference = abs(self.current_value - self.last_value)
+
+        smoothing_factor = self.get_smoothing_factor(value_difference)
+        self.smoothed_value = (
+            smoothing_factor * self.current_value
+            + (1 - smoothing_factor) * self.smoothed_value
+        )
+
+        calculated_cc_value = int(self.smoothed_value / 512)
+
+        if calculated_cc_value != self.cc_value:
+            self.cc_value = calculated_cc_value
+            self.cc_value_changed = True
+        else:
+            self.cc_value_changed = False
+
+        self.last_value = self.current_value
+        return self.cc_value_changed
+
+    def get_smoothing_factor(self, value_difference):
+        """
+        Calculates the smoothing factor based on the value difference and the current value.
+
+        If value_difference exceeds movement_threshold, returns fast_smoothing_factor;
+        otherwise, returns slow_smoothing_factor. If current_value is within the 
+        [middle_range_start, middle_range_end] range, the factor is limited to 
+        middle_range_smoothing_factor.
+
+        Args:
+            value_difference (float): Absolute difference between current and previous values.
+
+        Returns:
+            float: The calculated smoothing factor.
+        """
+        if value_difference > self.movement_threshold:
+            factor = self.fast_smoothing_factor
+        else:
+            factor = self.slow_smoothing_factor
+
+        if self.middle_range_start <= self.current_value <= self.middle_range_end:
+            factor = min(factor, self.middle_range_smoothing_factor)
+
+        return factor
+
+class BankButton:
+    def __init__(self, digital_pin):
+        """
+        Represents a single bank button with state debouncing, hold/double-press detection.
+
+        Args:
+            digital_pin (digitalio.DigitalInOut): The digital pin attached to the button.
+        """
+        self.digital_pin = digital_pin
+        self.digital_pin.direction = digitalio.Direction.INPUT
+        self.digital_pin.pull = digitalio.Pull.UP
+        self.button = Debouncer(self.digital_pin)
+        self._last_press_time = 0
+        self._hold_time = 0
+        self._is_long_held = False
+        self._was_long_held = False
+        self._double_press_detected = False
+        self._last_release_time = 0
+        self.detected_new_release = False
+        self.detected_new_press = False
+
+    def update(self):
+        """
+        Updates the button state and detects new presses, releases, holds, and double-press events.
+
+        Returns:
+            bool: True if the button's state changed (pressed or released), otherwise False.
+        """
+        self.button.update()
+        state_changed = False
+        self.detected_new_release = False
+        self.detected_new_press = False
+        self._double_press_detected = False
+        self._was_long_held = False
+        current_time = time.monotonic()
+
+        new_press = self.button.fell
+        new_release = self.button.rose
+        currently_pressed = not self.button.value
+
+        # Button just pressed
+        if new_press:
+            if (current_time - self._last_press_time) <= cfg.DOUBLE_PRESS_TIME:
+                self._double_press_detected = True
+            else:
+                self._double_press_detected = False
+            self._last_press_time = current_time
+            self._hold_time = 0.01
+            state_changed = True
+            self.detected_new_press = True
+
+        elif new_release:
+            self._hold_time = 0
+            self._last_release_time = current_time
+            state_changed = True
+            self.detected_new_release = True
+            self._was_long_held = self._is_long_held
+            self._is_long_held = False
+
+        # Button state did not change
+        else:
+            if currently_pressed:
+                self._hold_time = current_time - self._last_press_time
+                if self._hold_time >= cfg.LONG_HOLD_THRESH_S and not self._is_long_held:
+                    self._is_long_held = True
+            else:
+                self._hold_time = 0
+                self._is_long_held = False
+                self._double_press_detected = False
+
+        return state_changed
+
+    @property
+    def pressed(self):
+        """
+        Indicates if the button is currently pressed.
+
+        Returns:
+            bool: True if pressed, otherwise False.
+        """
+        return not self.button.value
+
+    @property
+    def hold_time(self):
+        """
+        The duration for which the button has been held (if pressed).
+
+        Returns:
+            float: The current hold time in seconds.
+        """
+        return self._hold_time
+
+    @property
+    def is_long_held(self):
+        """
+        Indicates if the button was held longer than cfg.LONG_HOLD_THRESH_S.
+
+        Returns:
+            bool: True if long-held, otherwise False.
+        """
+        return self._is_long_held
+
+    @property
+    def was_long_held(self):
+        """
+        Indicates if the button had been held longer than cfg.LONG_HOLD_THRESH_S 
+        prior to the last release.
+
+        Returns:
+            bool: True if it was long-held, otherwise False.
+        """
+        return self._was_long_held
+
+    @property
+    def was_double_pressed(self):
+        """
+        Indicates if a double press was detected since the last press.
+
+        Returns:
+            bool: True if double-pressed, otherwise False.
+        """
+        return self._double_press_detected
+
+    @property
+    def last_press_time(self):
+        """
+        The timestamp of the most recent button press.
+
+        Returns:
+            float: The time of the last press event, in seconds.
+        """
+        return self._last_press_time
+#--- END inputs.py ---#
+
+#--- BEGIN debug.py ---#
+import time
+import adafruit_ticks as ticks
+import digitalio
+from collections import OrderedDict
+import constants
+from utils import free_memory
+DEBUG_INTERVAL_S = 1.5  # Interval to print debug info (seconds)
+
+DEBUG = True # Set to True to enable debug mode
+
+class PerformanceTimer:
+    """
+    Memory-efficient performance timer for constrained environments.
+
+    This implementation avoids dynamic memory allocation by using preallocated
+    fixed-size arrays for storing labels and statistics. All statistics reset
+    after each printout.
+    """
+
+    def __init__(self, max_labels=10):
+        """
+        Initialize the performance timer with a fixed number of labels.
+
+        :param max_labels: Maximum number of unique sections (labels) to track.
+        """
+        self.max_labels = max_labels
+        
+        # Preallocate fixed-size structures
+        self.labels = [None] * max_labels  # Label names
+        self.start_times = [0] * max_labels  # Start times for active labels
+        self.total_times = [0] * max_labels  # Accumulated total times
+        self.call_counts = [0] * max_labels  # Number of calls for each label
+        self.max_times = [0] * max_labels   # Maximum elapsed time for each label
+        self.min_times = [float("inf")] * max_labels  # Minimum elapsed time for each label
+        
+        self._last_print_time = ticks.ticks_ms()  # Last time the statistics were printed
+
+    def _get_label_index(self, label):
+        """
+        Find the index of the given label or allocate a new one.
+
+        :param label: The name of the section/label.
+        :return: Index of the label in preallocated arrays.
+        :raises MemoryError: If the maximum number of labels is exceeded.
+        """
+        # Check if the label already exists
+        for i in range(self.max_labels):
+            if self.labels[i] == label:
+                return i
+        
+        # Find the first free slot to allocate this label
+        for i in range(self.max_labels):
+            if self.labels[i] is None:
+                self.labels[i] = label
+                return i
+        
+        # If we reach here, we've exceeded the maximum number of labels
+        raise MemoryError("Exceeded the maximum number of performance timer labels")
+
+    def start(self, label):
+        """
+        Start timing the section identified by 'label'.
+        """
+        try:
+            index = self._get_label_index(label)
+            self.start_times[index] = ticks.ticks_ms()
+        except MemoryError as e:
+            print(f"[PerformanceTimer] {e}")
+
+    def stop(self, label):
+        """
+        Stop timing the section identified by 'label' and update statistics.
+        """
+        try:
+            index = self._get_label_index(label)
+            start_time = self.start_times[index]
+            if start_time == 0:
+                print(f"[PerformanceTimer] Warning: stop() called for label '{label}' without matching start()")
+                return
+
+            # Calculate elapsed time
+            end_time = ticks.ticks_ms()
+            elapsed = ticks.ticks_diff(end_time, start_time)
+            self.start_times[index] = 0  # Reset the start time
+
+            # Update statistics for the label
+            self.total_times[index] += elapsed
+            self.call_counts[index] += 1
+            self.max_times[index] = max(self.max_times[index], elapsed)
+            self.min_times[index] = min(self.min_times[index], elapsed)
+
+        except MemoryError as e:
+            print(f"[PerformanceTimer] {e}")
+
+    def print_data(self):
+        """
+        Print the accumulated performance data for all tracked sections.
+        Resets all statistics after printing.
+        """
+        header = f"{'Section':<35} {'Calls':>10} {'Total (ms)':>12} {'Avg (ms)':>12} {'Max (ms)':>12} {'Min (ms)':>12}"
+        separator = "-" * len(header)
+        print("\n=== Performance Timer Data ===")
+        print(header)
+        print(separator)
+
+        for i in range(self.max_labels):
+            if self.labels[i] is not None and self.call_counts[i] > 0:
+                # Calculate and display statistics for each label
+                total = self.total_times[i]
+                count = self.call_counts[i]
+                avg = total / count if count > 0 else 0
+                max_time = self.max_times[i]
+                min_time = self.min_times[i] if self.min_times[i] != float("inf") else 0
+                print(f"{self.labels[i]:<35} {count:>10} {total:>12} {avg:>12.2f} {max_time:>12} {min_time:>12}")
+
+        print(separator)
+
+        # Reset all statistics after printing
+        self._reset_statistics()
+
+    def _reset_statistics(self):
+        """
+        Reset all recorded statistics for the timer.
+        This clears totals, counts, and min/max times while keeping labels intact.
+        """
+        for i in range(self.max_labels):
+            self.start_times[i] = 0
+            self.total_times[i] = 0
+            self.call_counts[i] = 0
+            self.max_times[i] = 0
+            self.min_times[i] = float("inf")
+
+    def update(self):
+        """
+        Print performance statistics at regular intervals (default: every second).
+        Automatically resets statistics after each printout.
+        """
+        now = ticks.ticks_ms()
+        if ticks.ticks_diff(now, self._last_print_time) >= 1000:
+            self.print_data()
+            self._last_print_time = now
+
+# Create an instance of the Debug class for debugging
+performance_timer = PerformanceTimer()
+
+
+
+#--- END debug.py ---#
+
+#--- BEGIN settings.py ---#
+import json
+import os
+
+class Settings:
+    """
+    Handles reading and validating settings from a JSON file.
+    Provides default values if the settings file doesn't exist or contains invalid data.
+    """
+    
+    # Default CC bank settings
+    DEFAULT_GLOBAL_CC_BANK = [0, 1, 2, 3]
+    DEFAULT_CC_BANKS_1 = [
+        [4, 5, 6, 7],
+        [8, 9, 10, 11],
+        [12, 13, 14, 15],
+        [16, 17, 18, 19]
+    ]
+    DEFAULT_CC_BANKS_2 = [
+        [20, 21, 22, 23],
+        [24, 25, 26, 27],
+        [28, 29, 30, 31],
+        [32, 33, 34, 35]
+    ]
+    DEFAULT_CC_BANKS_3 = [
+        [36, 37, 38, 39],
+        [40, 41, 42, 43],
+        [44, 45, 46, 47],
+        [48, 49, 50, 51]
+    ]
+    DEFAULT_CC_BANKS_4 = [
+        [52, 53, 54, 55],
+        [56, 57, 58, 59],
+        [60, 61, 62, 63],
+        [64, 65, 66, 67]
+    ]
+    
+    def __init__(self, settings_path="settings.json"):
+        """
+        Initialize Settings with path to settings file.
+        
+        Args:
+            settings_path (str): Path to settings JSON file
+        """
+        self.settings_path = settings_path
+        self.settings = {}
+        self.load_settings()
+        
+    def load_settings(self):
+        """
+        Load settings from JSON file. If file doesn't exist or is invalid,
+        use default values and create a new settings file.
+        """
+        try:
+   
+            with open(self.settings_path, 'r') as f:
+                self.settings = json.load(f)
+            
+            # Validate the loaded settings
+            if not self._validate_settings():
+                print("Invalid settings in file. Using defaults.")
+                self._use_defaults()
+                #self._save_settings()
+                
+        except Exception as e:
+            # Using a general Exception instead of specific JSONDecodeError
+            print(f"Error loading settings: {str(e)}. Using defaults.")
+            self._use_defaults()
+            #self._save_settings()
+    
+    def _validate_settings(self):
+        """
+        Validate the loaded settings to ensure they have the correct structure.
+        
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        # Check if required keys exist
+        required_keys = [
+            "GLOBAL_CC_BANK", 
+            "CC_BANKS_1", 
+            "CC_BANKS_2", 
+            "CC_BANKS_3", 
+            "CC_BANKS_4"
+        ]
+        
+        for key in required_keys:
+            if key not in self.settings:
+                print(f"Missing required setting: {key}")
+                return False
+        
+        # Validate GLOBAL_CC_BANK (list of 4 integers between 0-127)
+        if not self._validate_cc_list(self.settings["GLOBAL_CC_BANK"], 4):
+            return False
+            
+        # Validate CC_BANKS (4x4 arrays of integers between 0-127)
+        for bank_key in ["CC_BANKS_1", "CC_BANKS_2", "CC_BANKS_3", "CC_BANKS_4"]:
+            if not self._validate_cc_banks(self.settings[bank_key]):
+                return False
+                
+        return True
+    
+    def _validate_cc_list(self, cc_list, expected_length):
+        """
+        Validate a list of CC values.
+        
+        Args:
+            cc_list: The list to validate
+            expected_length: Expected length of the list
+            
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        if not isinstance(cc_list, list) or len(cc_list) != expected_length:
+            print(f"CC list must be a list of {expected_length} integers")
+            return False
+            
+        for cc in cc_list:
+            if not isinstance(cc, int) or cc < 0 or cc > 127:
+                print(f"Invalid CC value: {cc}. Must be an integer between 0-127")
+                return False
+                
+        return True
+    
+    def _validate_cc_banks(self, banks):
+        """
+        Validate a 4x4 array of CC banks.
+        
+        Args:
+            banks: The banks to validate
+            
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        if not isinstance(banks, list) or len(banks) != 4:
+            print("CC banks must be a list of 4 lists")
+            return False
+            
+        for bank in banks:
+            if not self._validate_cc_list(bank, 4):
+                return False
+                
+        return True
+    
+    def _use_defaults(self):
+        """Set settings to default values."""
+        self.settings = {
+            "GLOBAL_CC_BANK": self.DEFAULT_GLOBAL_CC_BANK,
+            "CC_BANKS_1": self.DEFAULT_CC_BANKS_1,
+            "CC_BANKS_2": self.DEFAULT_CC_BANKS_2,
+            "CC_BANKS_3": self.DEFAULT_CC_BANKS_3,
+            "CC_BANKS_4": self.DEFAULT_CC_BANKS_4
+        }
+    
+    def _save_settings(self):
+        """Save current settings to JSON file."""
+        try:
+            with open(self.settings_path, 'w') as f:
+                json.dump(self.settings, f, indent=4)
+        except Exception as e:
+            print(f"Error saving settings: {str(e)}")
+    
+    def get_global_cc_bank(self):
+        """Get the global CC bank settings."""
+        return self.settings["GLOBAL_CC_BANK"]
+    
+    def get_cc_banks_1(self):
+        """Get the CC banks 1 settings."""
+        return self.settings["CC_BANKS_1"]
+    
+    def get_cc_banks_2(self):
+        """Get the CC banks 2 settings."""
+        return self.settings["CC_BANKS_2"]
+    
+    def get_cc_banks_3(self):
+        """Get the CC banks 3 settings."""
+        return self.settings["CC_BANKS_3"]
+    
+    def get_cc_banks_4(self):
+        """Get the CC banks 4 settings."""
+        return self.settings["CC_BANKS_4"]
+    
+    def get_all_cc_bank_groups(self):
+        """Get all CC bank groups as a list."""
+        return [
+            self.settings["CC_BANKS_1"],
+            self.settings["CC_BANKS_2"],
+            self.settings["CC_BANKS_3"],
+            self.settings["CC_BANKS_4"]
+        ]
+
+# Create a singleton instance
+settings = Settings()
+#--- END settings.py ---#
+
+#--- BEGIN lights.py ---#
+import board
+import neopixel
+import neopixel_spi
+import time
+import busio
+from midi import midi_manager
+import constants as cfg
+
+class LightsManager:
+    """
+    Manages the NeoPixel LEDs on the MIDI controller.
+
+    - Pixel index 0 is next to the bottom-left button.
+    - Pixel index 4 is the bottom pixel next to slider 1.
+    - Pixel index 68 is the single pixel above all of the sliders (indicator pixel).
+
+    This class provides methods to update LEDs based on slider positions,
+    button states, and other functionalities.
+    """
+
+    def __init__(self, num_pixels=69, pixel_pin=board.GP15, brightness=0.2):
+        self.num_pixels = num_pixels
+        self.pixel_pin = pixel_pin
+        self.brightness = brightness
+
+        # Initialize NeoPixel strip
+        self.pixels = neopixel.NeoPixel(
+            self.pixel_pin, self.num_pixels, brightness=self.brightness, auto_write=False
+        )
+        self.pixels.fill((0, 0, 0))
+        self.pixels.show()
+
+        # Button-to-pixel mapping
+        self.button_pixel_indices = {
+            0: 0,   # Bottom-left button
+            1: 1,
+            2: 2,
+            3: 3,   # Buttons mapped to pixels 0-3
+        }
+
+        # Slider-to-pixel mapping
+        self.slider_pixel_indices = {
+            0: list(range(4, 20)),   # Slider 1 pixels (4-19) - total 16
+            1: list(range(20, 36)),  # Slider 2 pixels (20-35) - total 16
+            2: list(range(36, 52)),  # Slider 3 pixels (36-51) - total 16
+            3: list(range(52, 68)),  # Slider 4 pixels (52-67) - total 16
+        }
+
+        # Indicator pixel above sliders
+        self.indicator_pixel_index = 68
+        self.top_pixel = self.pixels[self.indicator_pixel_index]
+
+        # Default state
+        self.clear()
+        self.pixels[self.indicator_pixel_index] = cfg.REG_MODE_COLOR
+
+    def clear(self):
+        """
+        Clears all the pixels (sets them to black/off).
+        """
+        self.pixels.fill((0, 0, 0))
+
+    def update_slider_lights(self, sliders, bank_idx=0, bank_group_idx=0):
+        """
+        Updates the LEDs to reflect the current positions of the sliders.
+
+        Args:
+            sliders (list): A list of slider objects or their CC values (0-127).
+            bank_idx (int): The current bank index (-1 for global).
+            bank_group_idx (int): The current bank group index.
+        """
+        for slider_idx, slider in enumerate(sliders):
+            # Obtain the CC value (0-127)
+            slider_cc_value = slider.cc_value if hasattr(slider, 'cc_value') else slider
+
+            last_sent_cc_value = midi_manager.get_last_cc_value_sent(slider.current_assigned_cc_number)
+            if abs(slider_cc_value - last_sent_cc_value) > 4:
+                cc_value = last_sent_cc_value
+            else:
+                cc_value = slider_cc_value
+
+            num_pixels = len(self.slider_pixel_indices[slider_idx])
+            lit_pixels = int((cc_value / 127) * num_pixels)
+            pixel_indices = self.slider_pixel_indices[slider_idx]
+
+            # Determine color based on bank/global
+            if bank_idx == -1:
+                color = cfg.GLOBAL_BANK_COLOR
+            else:
+                color = cfg.BANK_GROUPS_COLORS[bank_group_idx][bank_idx]
+
+            # Light up pixels according to the CC value
+            for i, pix_idx in enumerate(pixel_indices):
+                self.pixels[pix_idx] = color if i < lit_pixels else (0, 0, 0)
+
+    def update_buttons(self, buttons, bank_group_idx, locked_bank_idx, blink_bank_indicator=False):
+        """
+        Turns button LEDs on or off based on the button state.
+
+        Args:
+            buttons (list): List of button objects.
+            bank_group_idx (int): Index of the current bank group.
+            locked_bank_idx (int): Index of the locked bank (-1 if none).
+            blink_bank_indicator (bool): Whether to blink the bank indicator (unused here).
+        """
+        if locked_bank_idx != -1:
+            # If a bank is locked, its lighting is handled separately
+            return
+        
+        show_bank_group_indicator = True
+
+        for idx, button in enumerate(buttons):
+            pixel_index = self.button_pixel_indices.get(idx)
+            if button.pressed:
+                self.pixels[pixel_index] = cfg.BANK_GROUPS_COLORS[bank_group_idx][idx]
+                show_bank_group_indicator = False
+            else:
+                self.pixels[pixel_index] = (0, 0, 0)
+
+        # If no button is pressed, light up the pixel representing the current bank group
+        if show_bank_group_indicator:
+            self.pixels[bank_group_idx] = cfg.BANK_GROUP_INDICATOR_COLOR
+
+    def indicate_locked_bank(self, bank_group_idx, locked_bank_idx):
+        """
+        Lights the button LED for the locked bank.
+
+        Args:
+            bank_group_idx (int): The current bank group index.
+            locked_bank_idx (int): The locked bank index.
+        """
+        for idx, pix_idx in self.button_pixel_indices.items():
+            if idx == locked_bank_idx:
+                self.pixels[pix_idx] = cfg.BANK_GROUPS_COLORS[bank_group_idx][locked_bank_idx]
+            else:
+                self.pixels[pix_idx] = (0, 0, 0)
+
+    def indicate_jump_mode(self, enabled):
+        """
+        Lights up the indicator pixel to show jump mode status.
+
+        Args:
+            enabled (bool): True if jump mode is enabled, False otherwise.
+        """
+        self.pixels[self.indicator_pixel_index] = cfg.JUMP_MODE_COLOR if enabled else cfg.REG_MODE_COLOR
+
+    def show_pixels(self):
+        """
+        Writes the current pixel state to the NeoPixel strip (makes changes visible).
+        """
+        self.pixels.show()
+
+    def startup_animation(self):
+        """
+        Plays a simple animation on startup.
+        """
+        for i in range(self.num_pixels):
+            self.pixels[i] = (0, 0, 255)
+            self.pixels.show()
+            time.sleep(0.005)
+        self.clear()
+
+    def rainbow_animation(self, speed=0.01, cycles=3):
+        """
+        Creates a smooth rainbow animation that cycles across all pixels.
+        
+        Args:
+            speed (float): Speed of the animation (lower is faster)
+            cycles (int): Number of complete color cycles across the strip
+        """
+        import math
+        
+        def wheel(pos):
+            """
+            Generate rainbow colors across 0-255 positions.
+            """
+            if pos < 85:
+                return (255 - pos * 3, pos * 3, 0)
+            elif pos < 170:
+                pos -= 85
+                return (0, 255 - pos * 3, pos * 3)
+            else:
+                pos -= 170
+                return (pos * 3, 0, 255 - pos * 3)
+        
+        try:
+            while True:
+                for j in range(256):
+                    for i in range(self.num_pixels):
+                        # Distribute the colors evenly across the strip with multiple cycles
+                        # This creates a wave-like effect with multiple color transitions visible at once
+                        position = (i * 256 * cycles // self.num_pixels + j) % 256
+                        self.pixels[i] = wheel(position)
+                    self.show_pixels()
+                    time.sleep(speed)
+        except KeyboardInterrupt:
+            # Allow for clean exit with CTRL+C
+            self.clear()
+            self.show_pixels()
+            print("Rainbow animation stopped")
+
+# # ------ TESTING COLORS ----------#
+# if __name__ == "__main__":
+#     lights_manager = LightsManager()
+#     colors = list(cfg.COLORS.items())
+    
+#     for i, (color_name, color_value) in enumerate(colors):
+#         if i < lights_manager.num_pixels:
+#             lights_manager.pixels[i] = color_value
+#             lights_manager.show_pixels()
+#             print(f"Displaying: {color_name} - {color_value}")
+#             input("...")
+    
+#     while True:
+#         time.sleep(1)  # Keep the lights on indefinitely
+
+if __name__ == "__main__":
+    lights = LightsManager()
+    lights.rainbow_animation(speed=0.001, cycles=2)
+#--- END lights.py ---#
+

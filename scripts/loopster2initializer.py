@@ -7,18 +7,9 @@ from distutils.dir_util import copy_tree
 
 NUKE = True  # If true, use nuke.uf2 first
 
-# Update these depending on the device
-
-# Mini Slider
-# NUKE_FP = "/Users/derrickthomin/Downloads/flash_nuke.uf2"
-# UF2_FP = "/Users/derrickthomin/Downloads/adafruit-circuitpython-raspberry_pi_pico-en_US-8.1.0.uf2"
-# SRC_FOLDER_FP = "/Users/derrickthomin/📜Documents Local/📝Project Writeups/Mini Midi Slider/Production/src"
-
-# # RGB Loopster
 NUKE_FP = "/Users/derrickthomin/Downloads/flash_nuke.uf2"
 UF2_FP = "/Users/derrickthomin/📜Documents Local/📝Project Writeups/DJBB Midi Loopster SMD RGB/Code - Production/uf2 current/adafruit-circuitpython-raspberry_pi_pico-en_US-8.2.6.uf2"
-# SRC_FOLDER_FP = "/Users/derrickthomin/📜Documents Local/📝Project Writeups/DJBB Midi Loopster SMD RGB/Code - Production/src"
-SRC_FOLDER_FP = "/Users/derrickthomin/📜Documents Local/📝Project Writeups/DJBB Midi Loopster SMD RGB/Code - Backup/src" # Backup
+SRC_FOLDER_FP = "/Users/derrickthomin/📜Documents Local/📝Project Writeups/Midi Sliders Cherry/Code - Production/src"
 # ---------------------------
 
 RPI_INIT_FP = "/Volumes/RPI-RP2"
