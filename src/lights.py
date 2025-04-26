@@ -1,8 +1,7 @@
 import board
+import storage
 import neopixel
-import neopixel_spi
 import time
-import busio
 from midi import midi_manager
 import constants as cfg
 
@@ -152,21 +151,31 @@ class LightsManager:
 
     def startup_animation(self):
         """
-        Plays a simple animation on startup.
+        Plays a brief but eye-catching rainbow animation on startup.
+        Limits the animation to approximately 1 second.
         """
-        for i in range(self.num_pixels):
-            self.pixels[i] = (0, 0, 255)
-            self.pixels.show()
-            time.sleep(0.005)
-        self.clear()
+        readonly = storage.getmount("/").readonly
+        if readonly:
+            # Blink all pixels red 3 times before starting the animation
+            for _ in range(3):
+                self.pixels.fill((255, 0, 0))
+                self.pixels.show()
+                time.sleep(0.2)
+                self.pixels.fill((0, 0, 0))
+                self.pixels.show()
+                time.sleep(0.2)
 
-    def rainbow_animation(self, speed=0.01, cycles=3):
+        # Simply call the rainbow animation with a 1-second duration limit
+        self.rainbow_animation(speed=0.002, cycles=2, duration=2.0)
+
+    def rainbow_animation(self, speed=0.01, cycles=3, duration=None):
         """
         Creates a smooth rainbow animation that cycles across all pixels.
         
         Args:
             speed (float): Speed of the animation (lower is faster)
             cycles (int): Number of complete color cycles across the strip
+            duration (float, optional): If provided, animation stops after this many seconds
         """
         import math
         
@@ -183,21 +192,30 @@ class LightsManager:
                 pos -= 170
                 return (pos * 3, 0, 255 - pos * 3)
         
+        start_time = time.monotonic()
         try:
             while True:
+                # Check if we've exceeded the time limit
+                if duration is not None and (time.monotonic() - start_time) > duration:
+                    break
+                    
                 for j in range(256):
+                    # Check time limit within the inner loop too
+                    if duration is not None and (time.monotonic() - start_time) > duration:
+                        break
+                        
                     for i in range(self.num_pixels):
                         # Distribute the colors evenly across the strip with multiple cycles
-                        # This creates a wave-like effect with multiple color transitions visible at once
                         position = (i * 256 * cycles // self.num_pixels + j) % 256
                         self.pixels[i] = wheel(position)
                     self.show_pixels()
                     time.sleep(speed)
         except KeyboardInterrupt:
-            # Allow for clean exit with CTRL+C
-            self.clear()
-            self.show_pixels()
-            print("Rainbow animation stopped")
+            pass
+            
+        # Clean up after animation ends
+        self.clear()
+        self.show_pixels()
 
 # # ------ TESTING COLORS ----------#
 # if __name__ == "__main__":

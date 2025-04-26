@@ -4,7 +4,7 @@ import digitalio
 import time
 import microcontroller
 
-# Overclock the CPU to 120 MHz
+# Overclock the CPU 
 microcontroller.cpu.frequency = 270_000_000
 
 # Check if all buttons are pressed during boot
@@ -39,6 +39,8 @@ def check_all_buttons_pressed():
 
 # Set the filesystem to read-only if all buttons are pressed
 storage.remount("/", readonly=check_all_buttons_pressed())
+m = storage.getmount("/")
+m.label = "LUMAFADER"
 
 # Print a message to the console for debugging
 if storage.getmount("/").readonly:
