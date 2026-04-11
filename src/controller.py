@@ -180,24 +180,27 @@ class MidiController:
     def send_cc_messages(self):
         """
         Sends CC messages for any slider whose value changed, if 'should_send_cc' returns True.
+        Supports multi-channel output where each bank/row can send to multiple MIDI channels.
         """
         for slider in self.sliders:
             if slider.cc_value_changed:
-                # Determine main channel
+                # Determine main channels (list)
                 if self.current_bank_idx == -1:
-                    main_channel = self.global_channel
+                    main_channels = self.global_channels
                 else:
-                    main_channel = self.channel_lookup[self.current_bank_group_idx][self.current_bank_idx]
+                    main_channels = self.channel_lookup[self.current_bank_group_idx][self.current_bank_idx]
                 
-                if self.should_send_cc(slider, main_channel):
-                    # Build list of (cc_number, channel) tuples
-                    cc_with_channels = [(slider.current_assigned_cc_number, main_channel)]
+                # Use first channel for pickup mode check (handles overlap gracefully)
+                if self.should_send_cc(slider, main_channels[0]):
+                    # Build list of (cc_number, channel) tuples for all main channels
+                    cc_with_channels = [(slider.current_assigned_cc_number, ch) for ch in main_channels]
                     
                     # Add additional CCs from held buttons with their respective channels
                     for i, add_cc in enumerate(slider.additional_assigned_cc_numbers):
                         row_idx = self.additional_bank_indicies[i]
-                        add_channel = self.channel_lookup[self.current_bank_group_idx][row_idx]
-                        cc_with_channels.append((add_cc, add_channel))
+                        add_channels = self.channel_lookup[self.current_bank_group_idx][row_idx]
+                        for ch in add_channels:
+                            cc_with_channels.append((add_cc, ch))
                     
                     midi_manager.send_cc(cc_with_channels, slider.cc_value)
                     slider.cc_value_changed = False
@@ -318,11 +321,11 @@ class MidiController:
         """
         current_cc_bank = self.get_current_cc_bank()
         
-        # Determine the channel for pickup mode tracking
+        # Determine the channels for pickup mode tracking (use first channel)
         if self.current_bank_idx == -1:
-            current_channel = self.global_channel
+            current_channel = self.global_channels[0]
         else:
-            current_channel = self.channel_lookup[self.current_bank_group_idx][self.current_bank_idx]
+            current_channel = self.channel_lookup[self.current_bank_group_idx][self.current_bank_idx][0]
 
         for idx, slider in enumerate(self.sliders):
             # Step 1: Assign primary CC number
@@ -361,13 +364,14 @@ class MidiController:
     def setup_channel_lookup(self):
         """
         Precomputes the MIDI channel lookup table for all bank groups and rows.
-        Also stores the global channel for the global CC bank.
+        Also stores the global channels for the global CC bank.
+        Each entry is now a list of channels to support multi-channel output.
         """
-        self.global_channel = settings.get_global_channel()
+        self.global_channels = settings.get_global_channels()
         
-        # channel_lookup[bank_group_idx][row_idx] = 0-indexed channel
+        # channel_lookup[bank_group_idx][row_idx] = list of 0-indexed channels
         self.channel_lookup = [
-            [settings.get_resolved_channel(bg, row) for row in range(4)]
+            [settings.get_resolved_channels(bg, row) for row in range(4)]
             for bg in range(4)
         ]
 
