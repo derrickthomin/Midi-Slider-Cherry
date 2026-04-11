@@ -1,24 +1,21 @@
 {
-    "_helptext": {
-        "description": "LumaFader 68 Settings - Channel configuration help",
-        "channel_keywords": {
-            "empty_or_null": "Inherit from parent (row→bank→global). Use \"\" or omit the field.",
-            "GLOBAL": "Use global channel directly, skipping bank-level settings.",
-            "BANK": "Use bank channel (only valid for row channels)."
-        },
-        "multi_channel": "Use pipe separator for multiple channels: \"1|2|3|4\"",
-        "hierarchy": "Row Channel → Bank Channel → Global Channel (first valid value wins)",
-        "examples": {
-            "single_channel": "1 or \"1\"",
-            "multi_channel": "\"1|2|3\"",
-            "inherit": "\"\" (empty string)",
-            "use_global": "\"GLOBAL\"",
-            "use_bank": "\"BANK\" (row channels only)"
-        },
-        "note": "Avoid overlapping channels between settings for best pickup mode behavior."
-    },
+    "_help": [
+        "=== LumaFader Settings ===",
+        "",
+        "CHANNELS: Set as number (1) or string. Use pipe for multi-channel: 1|2|3",
+        "  <blank>  = inherit from parent (row -> bank -> global)",
+        "  GLOBAL   = use global channel directly",
+        "  BANK     = use bank channel (row settings only)",
+        "",
+        "MESSAGE TYPES: CC (Control Change) or AT (Channel Aftertouch)",
+        "  CC = sends CC messages using the CC numbers in the bank arrays",
+        "  AT = sends aftertouch pressure (CC numbers ignored, one value per channel)",
+        "",
+        "Tip: Avoid overlapping channels between banks for best pickup mode behavior."
+    ],
 
     "GLOBAL_CHANNEL": 1,
+    "GLOBAL_MESSAGE_TYPE": "CC",
 
     "GLOBAL_CC_BANK": [0, 1, 2, 3],
 
@@ -30,6 +27,8 @@
     ],
     "CC_BANKS_1_CHANNEL": "",
     "CC_BANKS_1_ROW_CHANNELS": ["", "", "", ""],
+    "CC_BANKS_1_TYPE": "",
+    "CC_BANKS_1_ROW_TYPES": ["", "", "", ""],
 
     "CC_BANKS_2": [
         [20, 21, 22, 23],
@@ -39,6 +38,8 @@
     ],
     "CC_BANKS_2_CHANNEL": "",
     "CC_BANKS_2_ROW_CHANNELS": ["", "", "", ""],
+    "CC_BANKS_2_TYPE": "",
+    "CC_BANKS_2_ROW_TYPES": ["", "", "", ""],
 
     "CC_BANKS_3": [
         [36, 37, 38, 39],
@@ -48,6 +49,8 @@
     ],
     "CC_BANKS_3_CHANNEL": "",
     "CC_BANKS_3_ROW_CHANNELS": ["", "", "", ""],
+    "CC_BANKS_3_TYPE": "",
+    "CC_BANKS_3_ROW_TYPES": ["", "", "", ""],
 
     "CC_BANKS_4": [
         [52, 53, 54, 55],
@@ -56,5 +59,7 @@
         [64, 65, 66, 67]
     ],
     "CC_BANKS_4_CHANNEL": "",
-    "CC_BANKS_4_ROW_CHANNELS": ["", "", "", ""]
+    "CC_BANKS_4_ROW_CHANNELS": ["", "", "", ""],
+    "CC_BANKS_4_TYPE": "",
+    "CC_BANKS_4_ROW_TYPES": ["", "", "", ""]
 }

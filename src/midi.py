@@ -1,5 +1,6 @@
 import adafruit_midi
 from adafruit_midi.control_change import ControlChange
+from adafruit_midi.channel_pressure import ChannelPressure
 import busio
 import board
 import usb_midi
@@ -10,13 +11,22 @@ MIDI_AUX_RX_PIN = board.GP17
 
 class MidiManager:
     """
-    Manages sending and tracking MIDI CC messages over both USB and TRS MIDI.
+    Manages sending and tracking MIDI CC and Aftertouch messages over both USB and TRS MIDI.
     """
 
     def __init__(self):
         # Track last CC values by (cc_number, channel) tuple
         # This allows different channels to track independently
         self.last_cc_values_sent = {}
+        
+        # Track last aftertouch values by channel only
+        # (Channel Aftertouch is one value per channel, no CC number)
+        self.last_aftertouch_values_sent = {}
+        
+        # Track last aftertouch values per slider for LED/pickup purposes
+        # Key: (slider_idx, bank_group_idx, row_idx), Value: pressure value
+        # This allows independent pickup behavior even though AT is per-channel
+        self.last_at_values_per_slider = {}
 
         # Set up the UART and MIDI interfaces
         uart = busio.UART(
@@ -83,6 +93,77 @@ class MidiManager:
         """
         key = (cc_number, channel)
         return self.last_cc_values_sent.get(key, 16)
+    
+    # ==================== Aftertouch Methods ====================
+    
+    def has_aftertouch_value_changed(self, channel, pressure):
+        """
+        Checks whether the given aftertouch value differs from the last value sent
+        on the specified channel.
+        
+        Args:
+            channel (int): The MIDI channel (0-indexed, 0-15)
+            pressure (int): The aftertouch pressure value to check (0-127)
+            
+        Returns:
+            bool: True if value changed or never sent, False otherwise
+        """
+        return self.last_aftertouch_values_sent.get(channel, -1) != pressure
+    
+    def send_aftertouch(self, channels, pressure, slider_idx=0, bank_group_idx=0, row_idx=0):
+        """
+        Sends Channel Aftertouch (Channel Pressure) messages for all given channels,
+        but only if their values changed.
+        
+        Note: Channel Aftertouch is a single pressure value per channel.
+        Multiple sliders on the same channel will share the same aftertouch value.
+        Per-slider tracking is maintained separately for LED/pickup behavior.
+        
+        Args:
+            channels: List of channels (0-indexed) to send to
+            pressure (int): The pressure value to send (0-127)
+            slider_idx (int): Index of the slider (0-3) for per-slider tracking
+            bank_group_idx (int): Bank group index (0-3) for per-slider tracking
+            row_idx (int): Row index (0-3) for per-slider tracking
+        """
+        # Track per-slider for LED/pickup purposes
+        slider_key = (slider_idx, bank_group_idx, row_idx)
+        self.last_at_values_per_slider[slider_key] = pressure
+        
+        for channel in channels:
+            if self.has_aftertouch_value_changed(channel, pressure):
+                self.last_aftertouch_values_sent[channel] = pressure
+                at_msg = ChannelPressure(pressure, channel=channel)
+                self.midi.send(at_msg, channel=channel)
+                self.trs_midi.send(at_msg, channel=channel)
+    
+    def get_last_aftertouch_value_sent(self, channel):
+        """
+        Retrieves the last aftertouch value sent for a specified channel.
+
+        Args:
+            channel (int): MIDI channel (0-indexed, 0-15)
+
+        Returns:
+            int: The last aftertouch value sent for that channel, or 16 if never sent.
+        """
+        return self.last_aftertouch_values_sent.get(channel, 16)
+    
+    def get_last_at_value_per_slider(self, slider_idx, bank_group_idx, row_idx):
+        """
+        Retrieves the last aftertouch value sent for a specific slider/bank/row combo.
+        Used for LED display and pickup mode behavior.
+
+        Args:
+            slider_idx (int): Slider index (0-3)
+            bank_group_idx (int): Bank group index (0-3)
+            row_idx (int): Row index within the bank (0-3), or -1 for global
+
+        Returns:
+            int: The last AT value sent for that slider/bank/row, or 16 if never sent.
+        """
+        key = (slider_idx, bank_group_idx, row_idx)
+        return self.last_at_values_per_slider.get(key, 16)
 
 # Instantiate the global MidiManager
 midi_manager = MidiManager()

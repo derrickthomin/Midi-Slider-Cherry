@@ -8,6 +8,10 @@ class Settings:
     
     # Default channel settings
     DEFAULT_GLOBAL_CHANNEL = 1  # 1-indexed for user-friendliness
+    DEFAULT_GLOBAL_MESSAGE_TYPE = "CC"  # Default to Control Change
+    
+    # Valid message types
+    VALID_MESSAGE_TYPES = ("CC", "AT")  # CC = Control Change, AT = Channel Aftertouch
     
     # Default CC bank settings
     DEFAULT_GLOBAL_CC_BANK = [0, 1, 2, 3]
@@ -147,9 +151,11 @@ class Settings:
         """
         Set settings to factory default values.
         Channel settings use None to inherit (row→bank→global).
+        Type settings use None to inherit (row→bank→global), defaulting to "CC".
         """
         self.settings = {
             "GLOBAL_CHANNEL": self.DEFAULT_GLOBAL_CHANNEL,
+            "GLOBAL_MESSAGE_TYPE": self.DEFAULT_GLOBAL_MESSAGE_TYPE,
             "GLOBAL_CC_BANK": self.DEFAULT_GLOBAL_CC_BANK,
             "CC_BANKS_1": self.DEFAULT_CC_BANKS_1,
             "CC_BANKS_2": self.DEFAULT_CC_BANKS_2,
@@ -163,6 +169,14 @@ class Settings:
             "CC_BANKS_2_ROW_CHANNELS": None,
             "CC_BANKS_3_ROW_CHANNELS": None,
             "CC_BANKS_4_ROW_CHANNELS": None,
+            "CC_BANKS_1_TYPE": None,
+            "CC_BANKS_2_TYPE": None,
+            "CC_BANKS_3_TYPE": None,
+            "CC_BANKS_4_TYPE": None,
+            "CC_BANKS_1_ROW_TYPES": None,
+            "CC_BANKS_2_ROW_TYPES": None,
+            "CC_BANKS_3_ROW_TYPES": None,
+            "CC_BANKS_4_ROW_TYPES": None,
         }
     
     def _is_empty_or_null(self, val):
@@ -423,6 +437,120 @@ class Settings:
         
         # 2. Row channels array is null/empty or missing this index → use bank channel
         return self._get_bank_channels(bank_group_idx)
+    
+    # ==================== Message Type Methods ====================
+    
+    def _is_valid_message_type(self, val):
+        """
+        Check if a value is a valid message type.
+        Accepts: "CC", "AT", "", or null (inherit).
+        
+        Args:
+            val: The value to check
+            
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        if self._is_empty_or_null(val):
+            return True
+        return val in self.VALID_MESSAGE_TYPES
+    
+    def _validate_row_types(self, row_types):
+        """
+        Validate a row types array (4 type values).
+        Accepts null/empty for entire array or individual elements.
+        
+        Args:
+            row_types: The array to validate (can be None, empty, or list)
+            
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        if self._is_empty_or_null(row_types):
+            return True
+        if not isinstance(row_types, list) or len(row_types) != 4:
+            return False
+        return all(self._is_valid_message_type(t) for t in row_types)
+    
+    def get_global_message_type(self):
+        """
+        Get the global message type.
+        Falls back to "CC" if invalid or missing.
+        
+        Returns:
+            str: "CC" or "AT"
+        """
+        msg_type = self.settings.get("GLOBAL_MESSAGE_TYPE", self.DEFAULT_GLOBAL_MESSAGE_TYPE)
+        if msg_type in self.VALID_MESSAGE_TYPES:
+            return msg_type
+        print(f"Invalid GLOBAL_MESSAGE_TYPE: {msg_type}. Falling back to CC.")
+        return "CC"
+    
+    def _get_bank_message_type(self, bank_group_idx):
+        """
+        Get the resolved message type for a bank (not a specific row).
+        Falls back to global if bank type is empty/null.
+        
+        Args:
+            bank_group_idx (int): Bank group index (0-3)
+            
+        Returns:
+            str: "CC" or "AT"
+        """
+        bank_num = bank_group_idx + 1
+        bank_type_key = f"CC_BANKS_{bank_num}_TYPE"
+        bank_type = self.settings.get(bank_type_key)
+        
+        # Empty/null at bank level falls through to global
+        if self._is_empty_or_null(bank_type):
+            return self.get_global_message_type()
+        
+        if bank_type in self.VALID_MESSAGE_TYPES:
+            return bank_type
+        
+        # Invalid value, fall back to global
+        print(f"Invalid {bank_type_key}: {bank_type}. Falling back to global.")
+        return self.get_global_message_type()
+    
+    def get_resolved_message_type(self, bank_group_idx, row_idx):
+        """
+        Get the resolved message type for a specific bank group and row.
+        
+        Hierarchy (first valid value wins):
+        - Row Type → if set to "CC" or "AT"
+        - Bank Type → if row is empty/null
+        - Global Type → ultimate fallback
+        
+        Args:
+            bank_group_idx (int): Bank group index (0-3)
+            row_idx (int): Row index within the bank (0-3)
+            
+        Returns:
+            str: "CC" or "AT"
+        """
+        bank_num = bank_group_idx + 1
+        
+        # 1. Check row-level override
+        row_types_key = f"CC_BANKS_{bank_num}_ROW_TYPES"
+        row_types = self.settings.get(row_types_key)
+        
+        # If row_types array exists and has this index
+        if isinstance(row_types, list) and len(row_types) > row_idx:
+            row_type = row_types[row_idx]
+            
+            # Empty/null → use bank type
+            if self._is_empty_or_null(row_type):
+                return self._get_bank_message_type(bank_group_idx)
+            
+            # Valid type
+            if row_type in self.VALID_MESSAGE_TYPES:
+                return row_type
+            
+            # Invalid value, fall through to bank
+            print(f"Invalid row type [{row_idx}] in {row_types_key}: {row_type}. Using bank type.")
+        
+        # 2. Row types array is null/empty or missing this index → use bank type
+        return self._get_bank_message_type(bank_group_idx)
 
 # Create a singleton instance
 settings = Settings()

@@ -179,49 +179,74 @@ class MidiController:
 
     def send_cc_messages(self):
         """
-        Sends CC messages for any slider whose value changed, if 'should_send_cc' returns True.
+        Sends MIDI messages for any slider whose value changed, if 'should_send_cc' returns True.
         Supports multi-channel output where each bank/row can send to multiple MIDI channels.
+        Handles both CC (Control Change) and AT (Channel Aftertouch) message types.
+        Each bank (primary and additional) sends according to its own type setting.
         """
-        for slider in self.sliders:
+        for slider_idx, slider in enumerate(self.sliders):
             if slider.cc_value_changed:
-                # Determine main channels (list)
+                # Determine main channels and message type
                 if self.current_bank_idx == -1:
                     main_channels = self.global_channels
+                    main_type = self.global_message_type
+                    main_row_idx = -1  # Global bank
                 else:
                     main_channels = self.channel_lookup[self.current_bank_group_idx][self.current_bank_idx]
+                    main_type = self.type_lookup[self.current_bank_group_idx][self.current_bank_idx]
+                    main_row_idx = self.current_bank_idx
                 
                 # Use first channel for pickup mode check (handles overlap gracefully)
-                if self.should_send_cc(slider, main_channels[0]):
-                    # Build list of (cc_number, channel) tuples for all main channels
-                    cc_with_channels = [(slider.current_assigned_cc_number, ch) for ch in main_channels]
+                if self.should_send_cc(slider, slider_idx, main_channels[0], main_type, main_row_idx):
+                    # Send primary bank message based on its type
+                    if main_type == "AT":
+                        midi_manager.send_aftertouch(main_channels, slider.cc_value, 
+                                                      slider_idx, self.current_bank_group_idx, main_row_idx)
+                    else:
+                        cc_with_channels = [(slider.current_assigned_cc_number, ch) for ch in main_channels]
+                        midi_manager.send_cc(cc_with_channels, slider.cc_value)
                     
-                    # Add additional CCs from held buttons with their respective channels
+                    # Process each additional bank according to its own type
                     for i, add_cc in enumerate(slider.additional_assigned_cc_numbers):
                         row_idx = self.additional_bank_indicies[i]
                         add_channels = self.channel_lookup[self.current_bank_group_idx][row_idx]
-                        for ch in add_channels:
-                            cc_with_channels.append((add_cc, ch))
+                        add_type = self.type_lookup[self.current_bank_group_idx][row_idx]
+                        
+                        if add_type == "AT":
+                            midi_manager.send_aftertouch(add_channels, slider.cc_value,
+                                                          slider_idx, self.current_bank_group_idx, row_idx)
+                        else:
+                            cc_with_channels = [(add_cc, ch) for ch in add_channels]
+                            midi_manager.send_cc(cc_with_channels, slider.cc_value)
                     
-                    midi_manager.send_cc(cc_with_channels, slider.cc_value)
                     slider.cc_value_changed = False
 
-    def should_send_cc(self, slider, channel):
+    def should_send_cc(self, slider, slider_idx, channel, message_type="CC", row_idx=-1):
         """
-        Determines whether a CC message should be sent based on pickup mode logic.
+        Determines whether a MIDI message should be sent based on pickup mode logic.
         
-        This method implements "pickup mode" where sliders only send CC values after 
+        This method implements "pickup mode" where sliders only send values after 
         physically crossing the last sent value, preventing sudden jumps in parameter values.
         
         Args:
             slider (MidiSlider): The slider object to check
+            slider_idx (int): Index of the slider (0-3)
             channel (int): The MIDI channel (0-indexed) for this slider's current bank
+            message_type (str): "CC" for Control Change, "AT" for Channel Aftertouch
+            row_idx (int): Row index (-1 for global, 0-3 for banks)
             
         Returns:
-            bool: True if a CC message should be sent, False otherwise
+            bool: True if a message should be sent, False otherwise
         """
         cc_number = slider.current_assigned_cc_number
-        last_cc_sent = midi_manager.get_last_cc_value_sent(cc_number, channel)
         cc_value = slider.cc_value
+        
+        # Get last sent value based on message type
+        # For AT, use per-slider tracking for independent pickup behavior
+        if message_type == "AT":
+            last_cc_sent = midi_manager.get_last_at_value_per_slider(slider_idx, self.current_bank_group_idx, row_idx)
+        else:
+            last_cc_sent = midi_manager.get_last_cc_value_sent(cc_number, channel)
 
         # Jump Mode always allows sending values immediately
         if self.jump_mode_enabled:
@@ -321,11 +346,13 @@ class MidiController:
         """
         current_cc_bank = self.get_current_cc_bank()
         
-        # Determine the channels for pickup mode tracking (use first channel)
+        # Determine the channels and message type for pickup mode tracking
         if self.current_bank_idx == -1:
             current_channel = self.global_channels[0]
+            current_type = self.global_message_type
         else:
             current_channel = self.channel_lookup[self.current_bank_group_idx][self.current_bank_idx][0]
+            current_type = self.type_lookup[self.current_bank_group_idx][self.current_bank_idx]
 
         for idx, slider in enumerate(self.sliders):
             # Step 1: Assign primary CC number
@@ -343,10 +370,20 @@ class MidiController:
                 else:
                     slider.additional_assigned_cc_numbers = []
 
-            # Step 3: Reset pickup mode tracking to prevent unwanted CC jumps
-            last_cc_sent = midi_manager.get_last_cc_value_sent(slider.current_assigned_cc_number, current_channel)
-            slider.crossing_cc_value = last_cc_sent
-            slider.has_crossed_last_cc_value = False
+            # Step 3: Reset pickup mode tracking to prevent unwanted jumps
+            # Use appropriate last value based on message type (per-slider for AT)
+            if current_type == "AT":
+                last_sent = midi_manager.get_last_at_value_per_slider(idx, self.current_bank_group_idx, self.current_bank_idx)
+            else:
+                last_sent = midi_manager.get_last_cc_value_sent(slider.current_assigned_cc_number, current_channel)
+            slider.crossing_cc_value = last_sent
+            
+            # If slider is already at/near the target value, consider it "picked up"
+            # This prevents requiring a wiggle when re-entering a bank at the same position
+            if abs(slider.cc_value - last_sent) <= cfg.CC_THRESHOLD:
+                slider.has_crossed_last_cc_value = True
+            else:
+                slider.has_crossed_last_cc_value = False
             slider.cc_value_changed = False
 
     def setup_cc_banks(self):
@@ -366,12 +403,20 @@ class MidiController:
         Precomputes the MIDI channel lookup table for all bank groups and rows.
         Also stores the global channels for the global CC bank.
         Each entry is now a list of channels to support multi-channel output.
+        Additionally precomputes message type lookup for CC vs Aftertouch.
         """
         self.global_channels = settings.get_global_channels()
+        self.global_message_type = settings.get_global_message_type()
         
         # channel_lookup[bank_group_idx][row_idx] = list of 0-indexed channels
         self.channel_lookup = [
             [settings.get_resolved_channels(bg, row) for row in range(4)]
+            for bg in range(4)
+        ]
+        
+        # type_lookup[bank_group_idx][row_idx] = "CC" or "AT"
+        self.type_lookup = [
+            [settings.get_resolved_message_type(bg, row) for row in range(4)]
             for bg in range(4)
         ]
 
