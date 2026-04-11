@@ -1,8 +1,7 @@
 import analogio
 import digitalio
-import board
 import time
-from adafruit_debouncer import Button, Debouncer
+from adafruit_debouncer import Debouncer
 import constants as cfg
 
 class MidiSlider:
@@ -40,6 +39,15 @@ class MidiSlider:
         # CC Threshold
         self.cc_threshold = cfg.CC_THRESHOLD
 
+        # Adaptive Smoothing State
+        self.adaptive_enabled = True
+        self.adaptive_state = "CHANGING"  # "STABLE" or "CHANGING"
+        self.adaptive_buffer = []  # Circular buffer for recent CC values
+        self.adaptive_last_state_change = time.monotonic()
+        self.adaptive_last_cc_sent = -1  # Initialize to invalid value to force first send
+        self.adaptive_last_cc_send_time = time.monotonic()  # Track when we last sent a CC
+        self.adaptive_smoothed_raw = 0  # Exponentially smoothed raw value
+
     def update(self):
         """
         Reads the current analog value, applies smoothing, and calculates the resulting CC value.
@@ -49,21 +57,49 @@ class MidiSlider:
             bool: True if cc_value_changed, otherwise False.
         """
         self.current_value = 65536 - self.analog_pin.value
-        value_difference = abs(self.current_value - self.last_value)
-
-        smoothing_factor = self.get_smoothing_factor(value_difference)
-        self.smoothed_value = (
-            smoothing_factor * self.current_value
-            + (1 - smoothing_factor) * self.smoothed_value
-        )
-
-        calculated_cc_value = int(self.smoothed_value / 512)
-
-        if calculated_cc_value != self.cc_value:
-            self.cc_value = calculated_cc_value
-            self.cc_value_changed = True
+        
+        # Apply exponential smoothing to raw values for adaptive smoothing
+        if self.adaptive_enabled:
+            if self.adaptive_smoothed_raw == 0:  # Initialize on first read
+                self.adaptive_smoothed_raw = self.current_value
+            else:
+                self.adaptive_smoothed_raw = (
+                    cfg.ADAPTIVE_SMOOTHING_FACTOR * self.current_value
+                    + (1 - cfg.ADAPTIVE_SMOOTHING_FACTOR) * self.adaptive_smoothed_raw
+                )
+            
+            # Convert smoothed raw value to CC for adaptive logic
+            adaptive_cc_value = int(self.adaptive_smoothed_raw / cfg.ADAPTIVE_RAW_TO_CC_DIVISOR)
+            adaptive_cc_value = max(0, min(127, adaptive_cc_value))  # Clamp to valid range
+            
+            # Update adaptive state and check if we should send CC
+            cc_should_update = self._update_adaptive_state(adaptive_cc_value)
+            if cc_should_update:
+                self.cc_value = adaptive_cc_value
+                self.cc_value_changed = True
+                self.adaptive_last_cc_sent = adaptive_cc_value
+                self.adaptive_last_cc_send_time = time.monotonic()
+            else:
+                self.cc_value_changed = False
         else:
-            self.cc_value_changed = False
+            # Original smoothing logic (fallback)
+            value_difference = abs(self.current_value - self.last_value)
+            smoothing_factor = self.get_smoothing_factor(value_difference)
+            self.smoothed_value = (
+                smoothing_factor * self.current_value
+                + (1 - smoothing_factor) * self.smoothed_value
+            )
+
+            calculated_cc_value = int(self.smoothed_value / 512)
+
+            if calculated_cc_value != self.cc_value:
+                self.cc_value = calculated_cc_value
+                self.cc_value_changed = True
+                # Keep adaptive state in sync when not using adaptive smoothing
+                self.adaptive_last_cc_sent = calculated_cc_value
+                self.adaptive_last_cc_send_time = time.monotonic()
+            else:
+                self.cc_value_changed = False
 
         self.last_value = self.current_value
         return self.cc_value_changed
@@ -92,6 +128,80 @@ class MidiSlider:
             factor = min(factor, self.middle_range_smoothing_factor)
 
         return factor
+
+    def _update_adaptive_state(self, cc_value):
+        """
+        Updates the adaptive smoothing state and determines if a CC message should be sent.
+        
+        Args:
+            cc_value (int): Current CC value (0-127)
+            
+        Returns:
+            bool: True if a CC message should be sent, False otherwise
+        """
+        current_time = time.monotonic()
+        
+        # Add current CC value to buffer
+        self.adaptive_buffer.append(cc_value)
+        if len(self.adaptive_buffer) > cfg.ADAPTIVE_BUFFER_SIZE:
+            self.adaptive_buffer.pop(0)
+        
+        # Determine threshold based on current state
+        if self.adaptive_state == "STABLE":
+            threshold = cfg.ADAPTIVE_STABLE_THRESHOLD_CC
+        else:
+            threshold = cfg.ADAPTIVE_MOVING_THRESHOLD_CC
+        
+        # Check if we should send CC message
+        cc_diff = abs(cc_value - self.adaptive_last_cc_sent)
+        should_send_cc = cc_diff >= threshold
+        
+        # State machine logic - base transitions on actual CC message activity
+        if self.adaptive_state == "CHANGING":
+            # Switch to STABLE only if we haven't sent a CC message for the hold duration
+            time_since_last_cc = current_time - self.adaptive_last_cc_send_time
+            if time_since_last_cc >= cfg.ADAPTIVE_HOLD_DURATION:
+                self.adaptive_state = "STABLE"
+                self.adaptive_last_state_change = current_time
+        elif self.adaptive_state == "STABLE":
+            # Switch to CHANGING immediately when we need to send a CC message
+            if should_send_cc:
+                self.adaptive_state = "CHANGING"
+                self.adaptive_last_state_change = current_time
+        
+        return should_send_cc
+    
+    def _is_readings_stable(self):
+        """
+        Checks if recent readings in the buffer are stable (low variation).
+        
+        Returns:
+            bool: True if readings are stable, False otherwise
+        """
+        if len(self.adaptive_buffer) < cfg.ADAPTIVE_BUFFER_SIZE:
+            return False
+        
+        min_val = min(self.adaptive_buffer)
+        max_val = max(self.adaptive_buffer)
+        range_val = max_val - min_val
+        
+        return range_val <= cfg.ADAPTIVE_STABILITY_RANGE
+    
+    def set_adaptive_smoothing(self, enabled):
+        """
+        Enable or disable adaptive smoothing for this slider.
+        
+        Args:
+            enabled (bool): True to enable adaptive smoothing, False to use original logic
+        """
+        self.adaptive_enabled = enabled
+        if enabled:
+            # Reset adaptive state when enabling
+            self.adaptive_state = "CHANGING"
+            self.adaptive_buffer = []
+            self.adaptive_last_state_change = time.monotonic()
+            self.adaptive_last_cc_send_time = time.monotonic()
+            self.adaptive_last_cc_sent = self.cc_value
 
 class BankButton:
     def __init__(self, digital_pin):
