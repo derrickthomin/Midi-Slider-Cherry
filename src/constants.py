@@ -17,45 +17,19 @@ MIDDLE_RANGE_SMOOTHING_FACTOR = 0.05
 # CC Threshold
 CC_THRESHOLD = 2
 
+# Adaptive Smoothing Constants
+ADAPTIVE_BUFFER_SIZE = 5
+ADAPTIVE_STABLE_THRESHOLD_CC = 3  # CC threshold when in stable mode
+ADAPTIVE_MOVING_THRESHOLD_CC = 1  # CC threshold when in moving mode
+ADAPTIVE_STABILITY_RANGE = 3      # Max range in buffer to consider "stable"
+ADAPTIVE_HOLD_DURATION = 1.0      # Time to wait before switching to stable mode (seconds)
+ADAPTIVE_MIN_MOVING_DURATION = 0.2  # Minimum time in moving mode (seconds)
+ADAPTIVE_SMOOTHING_FACTOR = 0.3   # Exponential smoothing factor for raw values
+ADAPTIVE_RAW_TO_CC_DIVISOR = 512  # 65536 / 128 = 512 (ADC range / CC range)
+
 # CC Value Range
 MIN_CC_VALUE = 0
 MAX_CC_VALUE = 127
-
-# # Global CC Bank
-# GLOBAL_CC_BANK = [0, 1, 2, 3]
-
-# # CC Banks
-# CC_BANKS_1 = [
-#     [4, 5, 6, 7],
-#     [8, 9, 10, 11],
-#     [12, 13, 14, 15],
-#     [16, 17, 18, 19],
-# ]
-# CC_BANKS_2 = [
-#     [20, 21, 22, 23],
-#     [24, 25, 26, 27],
-#     [28, 29, 30, 31],
-#     [32, 33, 34, 35],
-# ]
-# CC_BANKS_3 = [
-#     [36, 37, 38, 39],
-#     [40, 41, 42, 43],
-#     [44, 45, 46, 47],
-#     [48, 49, 50, 51],
-# ]
-# CC_BANKS_4 = [
-#     [52, 53, 54, 55],
-#     [56, 57, 58, 59],
-#     [60, 61, 62, 63],
-#     [64, 65, 66, 67],
-# ]
-
-# CC_BANK_GROUPS = [
-#     CC_BANKS_1,
-#     CC_BANKS_2,
-#     CC_BANKS_3,
-#     CC_BANKS_4,
-# ]
 
 # Global CC Bank and CC Banks from settings
 GLOBAL_CC_BANK = settings.get_global_cc_bank()

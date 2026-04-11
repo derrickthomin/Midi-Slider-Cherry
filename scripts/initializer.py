@@ -1,7 +1,7 @@
 import shutil
 import sys
 import time
-from distutils.dir_util import copy_tree
+import os
 
 # ------ USER SETTINGS ------
 
@@ -9,18 +9,18 @@ NUKE = True  # If true, use nuke.uf2 first
 
 NUKE_FP = "/Users/derrickthomin/Downloads/flash_nuke.uf2"
 UF2_FP = "/Users/derrickthomin/📜Documents Local/📝Project Writeups/DJBB Midi Loopster SMD RGB/Code - Production/uf2 current/adafruit-circuitpython-raspberry_pi_pico-en_US-8.2.6.uf2"
-SRC_FOLDER_FP = "/Users/derrickthomin/📜Documents Local/📝Project Writeups/Midi Sliders Cherry/Code - Production/src"
+SRC_FOLDER_FP = "/Users/derrickthomin/📜Documents Local/📝Project Writeups/Midi Sliders Cherry Sliders/Code - Production/src"
 # ---------------------------
 
 RPI_INIT_FP = "/Volumes/RPI-RP2"
 RPI_CIRCUITPYTHON_PATH = "/Volumes/CIRCUITPY"
-TIMEOUT_THRESHOLD = 60  # seconds
+TIMEOUT_THRESHOLD = 80  # seconds
 
 def flash_device():
     time_prev = time.monotonic()
 
     # Nuke if needed
-    if NUKE:
+    if NUKE: 
         try:
             shutil.copy(NUKE_FP, RPI_INIT_FP)
         except Exception as e:
@@ -54,12 +54,17 @@ def flash_device():
     time_prev = time.monotonic()
     while not success:
         try:
-            copy_tree(SRC_FOLDER_FP, RPI_CIRCUITPYTHON_PATH)
-            success = True
-            print("Success")
-            time_prev = time.monotonic()
-        except:
-            print("Retrying in 2s...")
+            # Remove existing files first to avoid conflicts
+            if os.path.exists(RPI_CIRCUITPYTHON_PATH):
+                # Use shutil.copytree with dirs_exist_ok to avoid caching issues
+                shutil.copytree(SRC_FOLDER_FP, RPI_CIRCUITPYTHON_PATH, dirs_exist_ok=True)
+                success = True
+                print("Success")
+                time_prev = time.monotonic()
+            else:
+                raise FileNotFoundError("CIRCUITPY not mounted")
+        except Exception as e:
+            print(f"Retrying in 2s... ({e})")
             time.sleep(2)
 
         if time.monotonic() - time_prev > TIMEOUT_THRESHOLD * 2:

@@ -36,8 +36,6 @@ print(f"clock freq: {microcontroller.cpu.frequency}")
 
 # Main loop
 while True:
-    prev_bank_group_idx = midi_controller.current_bank_group_idx
-
     midi_controller.update_inputs()
     midi_controller.process_inputs()
 
@@ -47,15 +45,16 @@ while True:
     jump_mode_enabled = midi_controller.jump_mode_enabled
     sliders = midi_controller.sliders
     buttons = midi_controller.buttons
+    held_button_order = midi_controller.held_button_order
+    bank_group_just_changed = midi_controller.bank_group_just_changed
 
     # Update slider lights
-    lights_manager.update_slider_lights(sliders, bank_idx, bank_group_idx)
+    lights_manager.update_slider_lights(sliders, bank_idx, bank_group_idx, held_button_order, bank_group_just_changed)
 
     if locked_bank_idx != -1:
         lights_manager.indicate_locked_bank(bank_group_idx, locked_bank_idx)
     else:
-        force_bank_indicator = (prev_bank_group_idx != bank_group_idx)
-        lights_manager.update_buttons(buttons, bank_group_idx, locked_bank_idx, force_bank_indicator)
+        lights_manager.update_buttons(buttons, bank_group_idx, locked_bank_idx, bank_group_just_changed)
 
     lights_manager.indicate_jump_mode(jump_mode_enabled)
     lights_manager.show_pixels()

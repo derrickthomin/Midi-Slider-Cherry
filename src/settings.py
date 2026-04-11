@@ -1,11 +1,13 @@
 import json
-import os
 
 class Settings:
     """
     Handles reading and validating settings from a JSON file.
     Provides default values if the settings file doesn't exist or contains invalid data.
     """
+    
+    # Default channel settings
+    DEFAULT_GLOBAL_CHANNEL = 1  # 1-indexed for user-friendliness
     
     # Default CC bank settings
     DEFAULT_GLOBAL_CC_BANK = [0, 1, 2, 3]
@@ -144,11 +146,20 @@ class Settings:
     def _use_defaults(self):
         """Set settings to default values."""
         self.settings = {
+            "GLOBAL_CHANNEL": self.DEFAULT_GLOBAL_CHANNEL,
             "GLOBAL_CC_BANK": self.DEFAULT_GLOBAL_CC_BANK,
             "CC_BANKS_1": self.DEFAULT_CC_BANKS_1,
             "CC_BANKS_2": self.DEFAULT_CC_BANKS_2,
             "CC_BANKS_3": self.DEFAULT_CC_BANKS_3,
-            "CC_BANKS_4": self.DEFAULT_CC_BANKS_4
+            "CC_BANKS_4": self.DEFAULT_CC_BANKS_4,
+            "CC_BANKS_1_CHANNEL": "GLOBAL",
+            "CC_BANKS_2_CHANNEL": "GLOBAL",
+            "CC_BANKS_3_CHANNEL": "GLOBAL",
+            "CC_BANKS_4_CHANNEL": "GLOBAL",
+            "CC_BANKS_1_ROW_CHANNELS": ["GLOBAL", "GLOBAL", "GLOBAL", "GLOBAL"],
+            "CC_BANKS_2_ROW_CHANNELS": ["GLOBAL", "GLOBAL", "GLOBAL", "GLOBAL"],
+            "CC_BANKS_3_ROW_CHANNELS": ["GLOBAL", "GLOBAL", "GLOBAL", "GLOBAL"],
+            "CC_BANKS_4_ROW_CHANNELS": ["GLOBAL", "GLOBAL", "GLOBAL", "GLOBAL"],
         }
     
     def _save_settings(self):
@@ -187,6 +198,114 @@ class Settings:
             self.settings["CC_BANKS_3"],
             self.settings["CC_BANKS_4"]
         ]
+    
+    def _is_valid_channel_number(self, val):
+        """
+        Check if a value is a valid MIDI channel number (1-16, user-indexed).
+        Accepts both integers and string representations of integers.
+        
+        Args:
+            val: The value to check
+            
+        Returns:
+            bool: True if valid channel number, False otherwise
+        """
+        # Handle integer directly
+        if isinstance(val, int):
+            return 1 <= val <= 16
+        # Handle string representation of integer
+        if isinstance(val, str) and val.isdigit():
+            return 1 <= int(val) <= 16
+        return False
+    
+    def _get_channel_as_int(self, val):
+        """
+        Convert a channel value to integer (1-16).
+        
+        Args:
+            val: Channel value (int or string)
+            
+        Returns:
+            int: The channel number, or None if invalid
+        """
+        if isinstance(val, int):
+            return val
+        if isinstance(val, str) and val.isdigit():
+            return int(val)
+        return None
+    
+    def _validate_channel_value(self, val):
+        """
+        Validate a channel value (either "GLOBAL" or int 1-16).
+        
+        Args:
+            val: The value to validate
+            
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        if val == "GLOBAL":
+            return True
+        return self._is_valid_channel_number(val)
+    
+    def _validate_row_channels(self, row_channels):
+        """
+        Validate a row channels array (4 channel values).
+        
+        Args:
+            row_channels: The array to validate
+            
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        if not isinstance(row_channels, list) or len(row_channels) != 4:
+            return False
+        return all(self._validate_channel_value(ch) for ch in row_channels)
+    
+    def get_global_channel(self):
+        """
+        Get the global MIDI channel (0-indexed for internal use).
+        Falls back to 0 (channel 1) if invalid.
+        
+        Returns:
+            int: 0-indexed MIDI channel (0-15)
+        """
+        ch = self.settings.get("GLOBAL_CHANNEL", self.DEFAULT_GLOBAL_CHANNEL)
+        if self._is_valid_channel_number(ch):
+            return self._get_channel_as_int(ch) - 1  # Convert to 0-indexed
+        print(f"Invalid GLOBAL_CHANNEL: {ch}. Falling back to channel 1.")
+        return 0  # Default to channel 1 (0-indexed)
+    
+    def get_resolved_channel(self, bank_group_idx, row_idx):
+        """
+        Get the resolved MIDI channel for a specific bank group and row.
+        Hierarchy: Row Channel → Bank Channel → Global Channel
+        
+        Args:
+            bank_group_idx (int): Bank group index (0-3)
+            row_idx (int): Row index within the bank (0-3)
+            
+        Returns:
+            int: 0-indexed MIDI channel (0-15)
+        """
+        bank_num = bank_group_idx + 1  # Convert to 1-indexed for settings keys
+        
+        # 1. Check row-level override
+        row_channels_key = f"CC_BANKS_{bank_num}_ROW_CHANNELS"
+        row_channels = self.settings.get(row_channels_key)
+        if row_channels and isinstance(row_channels, list) and len(row_channels) > row_idx:
+            row_ch = row_channels[row_idx]
+            if self._is_valid_channel_number(row_ch):
+                return self._get_channel_as_int(row_ch) - 1  # Convert to 0-indexed
+        
+        # 2. Check bank-level override
+        bank_channel_key = f"CC_BANKS_{bank_num}_CHANNEL"
+        bank_ch = self.settings.get(bank_channel_key)
+        if self._is_valid_channel_number(bank_ch):
+            return self._get_channel_as_int(bank_ch) - 1  # Convert to 0-indexed
+        
+        # 3. Fall back to global channel
+        return self.get_global_channel()
 
 # Create a singleton instance
 settings = Settings()
