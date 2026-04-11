@@ -78,11 +78,11 @@ class LightsManager:
         if held_button_order is None:
             held_button_order = []
         
-        # Determine the channel for looking up last sent values
+        # Determine the channel for looking up last sent values (use first channel)
         if bank_idx == -1:
-            channel = settings.get_global_channel()
+            channel = settings.get_global_channels()[0]
         else:
-            channel = settings.get_resolved_channel(bank_group_idx, bank_idx)
+            channel = settings.get_resolved_channels(bank_group_idx, bank_idx)[0]
         
         # Check for multi-bank mode and handle morphing
         # Disable morphing during bank group navigation to avoid false triggers

@@ -144,7 +144,10 @@ class Settings:
         return True
     
     def _use_defaults(self):
-        """Set settings to default values."""
+        """
+        Set settings to factory default values.
+        Channel settings use None to inherit (row→bank→global).
+        """
         self.settings = {
             "GLOBAL_CHANNEL": self.DEFAULT_GLOBAL_CHANNEL,
             "GLOBAL_CC_BANK": self.DEFAULT_GLOBAL_CC_BANK,
@@ -152,15 +155,27 @@ class Settings:
             "CC_BANKS_2": self.DEFAULT_CC_BANKS_2,
             "CC_BANKS_3": self.DEFAULT_CC_BANKS_3,
             "CC_BANKS_4": self.DEFAULT_CC_BANKS_4,
-            "CC_BANKS_1_CHANNEL": "GLOBAL",
-            "CC_BANKS_2_CHANNEL": "GLOBAL",
-            "CC_BANKS_3_CHANNEL": "GLOBAL",
-            "CC_BANKS_4_CHANNEL": "GLOBAL",
-            "CC_BANKS_1_ROW_CHANNELS": ["GLOBAL", "GLOBAL", "GLOBAL", "GLOBAL"],
-            "CC_BANKS_2_ROW_CHANNELS": ["GLOBAL", "GLOBAL", "GLOBAL", "GLOBAL"],
-            "CC_BANKS_3_ROW_CHANNELS": ["GLOBAL", "GLOBAL", "GLOBAL", "GLOBAL"],
-            "CC_BANKS_4_ROW_CHANNELS": ["GLOBAL", "GLOBAL", "GLOBAL", "GLOBAL"],
+            "CC_BANKS_1_CHANNEL": None,
+            "CC_BANKS_2_CHANNEL": None,
+            "CC_BANKS_3_CHANNEL": None,
+            "CC_BANKS_4_CHANNEL": None,
+            "CC_BANKS_1_ROW_CHANNELS": None,
+            "CC_BANKS_2_ROW_CHANNELS": None,
+            "CC_BANKS_3_ROW_CHANNELS": None,
+            "CC_BANKS_4_ROW_CHANNELS": None,
         }
+    
+    def _is_empty_or_null(self, val):
+        """
+        Check if a value is empty/null (meaning "inherit from parent").
+        
+        Args:
+            val: The value to check
+            
+        Returns:
+            bool: True if value should inherit, False otherwise
+        """
+        return val is None or val == "" or val == "null"
     
     def _save_settings(self):
         """Save current settings to JSON file."""
@@ -199,9 +214,9 @@ class Settings:
             self.settings["CC_BANKS_4"]
         ]
     
-    def _is_valid_channel_number(self, val):
+    def _is_valid_single_channel(self, val):
         """
-        Check if a value is a valid MIDI channel number (1-16, user-indexed).
+        Check if a value is a valid single MIDI channel number (1-16, user-indexed).
         Accepts both integers and string representations of integers.
         
         Args:
@@ -218,25 +233,75 @@ class Settings:
             return 1 <= int(val) <= 16
         return False
     
-    def _get_channel_as_int(self, val):
+    def _is_valid_channel_value(self, val):
         """
-        Convert a channel value to integer (1-16).
+        Check if a value is a valid channel specification.
+        Accepts: int (1-16), "GLOBAL", "BANK", "", null, or multi-channel string "1|2|3".
         
         Args:
-            val: Channel value (int or string)
+            val: The value to check
             
         Returns:
-            int: The channel number, or None if invalid
+            bool: True if valid, False otherwise
         """
-        if isinstance(val, int):
-            return val
-        if isinstance(val, str) and val.isdigit():
-            return int(val)
+        # Empty/null means inherit
+        if self._is_empty_or_null(val):
+            return True
+        if val in ("GLOBAL", "BANK"):
+            return True
+        if self._is_valid_single_channel(val):
+            return True
+        # Check for multi-channel format "1|2|3"
+        if isinstance(val, str) and "|" in val:
+            parts = val.split("|")
+            return all(self._is_valid_single_channel(p.strip()) for p in parts)
+        return False
+    
+    def _parse_channels(self, val):
+        """
+        Parse a channel value into a list of 0-indexed channel numbers.
+        
+        Supports:
+        - Single int: 1 → [0]
+        - String int: "1" → [0]
+        - Multi-channel: "1|2|3" → [0, 1, 2]
+        
+        Note: For multi-channel setups, avoid overlapping channels between
+        GLOBAL and bank/row settings. If overlap occurs, pickup mode may
+        behave unexpectedly (uses first channel for crossing detection).
+        
+        Args:
+            val: Channel value (int, string, or multi-channel string)
+            
+        Returns:
+            list: List of 0-indexed channel numbers, or None if invalid
+        """
+        # Single integer
+        if isinstance(val, int) and 1 <= val <= 16:
+            return [val - 1]
+        
+        if isinstance(val, str):
+            # Single string integer
+            if val.isdigit() and 1 <= int(val) <= 16:
+                return [int(val) - 1]
+            
+            # Multi-channel format "1|2|3"
+            if "|" in val:
+                parts = val.split("|")
+                channels = []
+                for p in parts:
+                    p = p.strip()
+                    if p.isdigit() and 1 <= int(p) <= 16:
+                        channels.append(int(p) - 1)
+                    else:
+                        return None  # Invalid part
+                return channels if channels else None
+        
         return None
     
     def _validate_channel_value(self, val):
         """
-        Validate a channel value (either "GLOBAL" or int 1-16).
+        Validate a channel value ("GLOBAL", int 1-16, or multi-channel "1|2|3").
         
         Args:
             val: The value to validate
@@ -244,68 +309,120 @@ class Settings:
         Returns:
             bool: True if valid, False otherwise
         """
-        if val == "GLOBAL":
-            return True
-        return self._is_valid_channel_number(val)
+        return self._is_valid_channel_value(val)
     
     def _validate_row_channels(self, row_channels):
         """
         Validate a row channels array (4 channel values).
+        Accepts null/empty for entire array or individual elements.
         
         Args:
-            row_channels: The array to validate
+            row_channels: The array to validate (can be None, empty, or list)
             
         Returns:
             bool: True if valid, False otherwise
         """
+        # Null or empty array means inherit from bank
+        if self._is_empty_or_null(row_channels):
+            return True
         if not isinstance(row_channels, list) or len(row_channels) != 4:
             return False
         return all(self._validate_channel_value(ch) for ch in row_channels)
     
-    def get_global_channel(self):
+    def _get_bank_channels(self, bank_group_idx):
         """
-        Get the global MIDI channel (0-indexed for internal use).
-        Falls back to 0 (channel 1) if invalid.
+        Get the resolved MIDI channels for a bank (not a specific row).
+        Falls back to global if bank channel is empty/null/GLOBAL/BANK.
+        
+        Args:
+            bank_group_idx (int): Bank group index (0-3)
+            
+        Returns:
+            list: List of 0-indexed MIDI channels
+        """
+        bank_num = bank_group_idx + 1
+        bank_channel_key = f"CC_BANKS_{bank_num}_CHANNEL"
+        bank_ch = self.settings.get(bank_channel_key)
+        
+        # Empty/null/GLOBAL/BANK at bank level all fall through to global
+        if self._is_empty_or_null(bank_ch) or bank_ch in ("GLOBAL", "BANK"):
+            return self.get_global_channels()
+        
+        parsed = self._parse_channels(bank_ch)
+        if parsed is not None:
+            return parsed
+        
+        # Invalid value, fall back to global
+        print(f"Invalid {bank_channel_key}: {bank_ch}. Falling back to global.")
+        return self.get_global_channels()
+    
+    def get_global_channels(self):
+        """
+        Get the global MIDI channels (0-indexed for internal use).
+        Supports multi-channel format "1|2|3".
+        Falls back to [0] (channel 1) if invalid.
         
         Returns:
-            int: 0-indexed MIDI channel (0-15)
+            list: List of 0-indexed MIDI channels
         """
         ch = self.settings.get("GLOBAL_CHANNEL", self.DEFAULT_GLOBAL_CHANNEL)
-        if self._is_valid_channel_number(ch):
-            return self._get_channel_as_int(ch) - 1  # Convert to 0-indexed
+        parsed = self._parse_channels(ch)
+        if parsed is not None:
+            return parsed
         print(f"Invalid GLOBAL_CHANNEL: {ch}. Falling back to channel 1.")
-        return 0  # Default to channel 1 (0-indexed)
+        return [0]  # Default to channel 1 (0-indexed)
     
-    def get_resolved_channel(self, bank_group_idx, row_idx):
+    def get_resolved_channels(self, bank_group_idx, row_idx):
         """
-        Get the resolved MIDI channel for a specific bank group and row.
-        Hierarchy: Row Channel → Bank Channel → Global Channel
+        Get the resolved MIDI channels for a specific bank group and row.
+        
+        Hierarchy (first valid value wins):
+        - Row Channel → if set to specific channel(s)
+        - Bank Channel → if row is empty/null/"BANK", or row says "GLOBAL" and bank has specific channel
+        - Global Channel → ultimate fallback
+        
+        Keywords:
+        - "" or null: Inherit from parent (row→bank, bank→global)
+        - "GLOBAL": Use global channel directly
+        - "BANK": Use bank channel (only valid for row channels)
+        
+        Supports multi-channel format "1|2|3" at any level.
         
         Args:
             bank_group_idx (int): Bank group index (0-3)
             row_idx (int): Row index within the bank (0-3)
             
         Returns:
-            int: 0-indexed MIDI channel (0-15)
+            list: List of 0-indexed MIDI channels
         """
         bank_num = bank_group_idx + 1  # Convert to 1-indexed for settings keys
         
         # 1. Check row-level override
         row_channels_key = f"CC_BANKS_{bank_num}_ROW_CHANNELS"
         row_channels = self.settings.get(row_channels_key)
-        if row_channels and isinstance(row_channels, list) and len(row_channels) > row_idx:
+        
+        # If row_channels array exists and has this index
+        if isinstance(row_channels, list) and len(row_channels) > row_idx:
             row_ch = row_channels[row_idx]
-            if self._is_valid_channel_number(row_ch):
-                return self._get_channel_as_int(row_ch) - 1  # Convert to 0-indexed
+            
+            # Empty/null or "BANK" → use bank channel
+            if self._is_empty_or_null(row_ch) or row_ch == "BANK":
+                return self._get_bank_channels(bank_group_idx)
+            
+            # "GLOBAL" → skip bank, go directly to global
+            if row_ch == "GLOBAL":
+                return self.get_global_channels()
+            
+            # Try to parse as channel number(s)
+            parsed = self._parse_channels(row_ch)
+            if parsed is not None:
+                return parsed
+            
+            # Invalid value, fall through to bank
+            print(f"Invalid row channel [{row_idx}] in {row_channels_key}: {row_ch}. Using bank channel.")
         
-        # 2. Check bank-level override
-        bank_channel_key = f"CC_BANKS_{bank_num}_CHANNEL"
-        bank_ch = self.settings.get(bank_channel_key)
-        if self._is_valid_channel_number(bank_ch):
-            return self._get_channel_as_int(bank_ch) - 1  # Convert to 0-indexed
-        
-        # 3. Fall back to global channel
-        return self.get_global_channel()
+        # 2. Row channels array is null/empty or missing this index → use bank channel
+        return self._get_bank_channels(bank_group_idx)
 
 # Create a singleton instance
 settings = Settings()
