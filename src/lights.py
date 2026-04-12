@@ -167,7 +167,7 @@ class LightsManager:
             int(color1[2] + (color2[2] - color1[2]) * segment_progress),
         )
 
-    def update_buttons(self, buttons, bank_group_idx, locked_bank_idx, bank_group_just_changed=False):
+    def update_buttons(self, buttons, bank_group_idx, locked_bank_idx, bank_group_just_changed=False, bank_change_feedback=None):
         """
         Turns button LEDs on or off based on the button state.
 
@@ -176,10 +176,21 @@ class LightsManager:
             bank_group_idx (int): Index of the current bank group.
             locked_bank_idx (int): Index of the locked bank (-1 if none).
             bank_group_just_changed (bool): Whether bank group was just changed (show indicator while navigating).
+            bank_change_feedback (dict): Optional feedback state with:
+                - 'bank_change_mode': If True, hide all button colors (only show bank indicator)
+                - 'blink_button_idx': Button to blink when at limit
+                - 'blink_off': Whether we're in the "off" phase of the blink
         """
         if locked_bank_idx != -1:
             # If a bank is locked, its lighting is handled separately
             return
+        
+        if bank_change_feedback is None:
+            bank_change_feedback = {'bank_change_mode': False, 'blink_button_idx': -1, 'blink_off': False}
+        
+        bank_change_mode = bank_change_feedback.get('bank_change_mode', False)
+        blink_idx = bank_change_feedback.get('blink_button_idx', -1)
+        blink_off = bank_change_feedback.get('blink_off', False)
         
         any_button_pressed = False
         pressed_button_indices = set()
@@ -187,7 +198,11 @@ class LightsManager:
         for idx, button in enumerate(buttons):
             pixel_index = self.button_pixel_indices.get(idx)
             if button.pressed:
-                self.pixels[pixel_index] = cfg.BANK_GROUPS_COLORS[bank_group_idx][idx]
+                # In bank change mode, hide all button colors
+                if bank_change_mode:
+                    self.pixels[pixel_index] = (0, 0, 0)
+                else:
+                    self.pixels[pixel_index] = cfg.BANK_GROUPS_COLORS[bank_group_idx][idx]
                 any_button_pressed = True
                 pressed_button_indices.add(idx)
             else:
@@ -196,10 +211,18 @@ class LightsManager:
         # Show bank group indicator if:
         # - No buttons are pressed, OR
         # - Bank group was just changed (navigating between bank groups)
-        # But don't overwrite a pressed button's pixel
-        if not any_button_pressed or bank_group_just_changed:
-            if bank_group_idx not in pressed_button_indices:
-                self.pixels[bank_group_idx] = cfg.BANK_GROUP_INDICATOR_COLOR
+        # In bank change mode, always show indicator (button colors are hidden)
+        if not any_button_pressed or bank_group_just_changed or bank_change_mode:
+            indicator_idx = bank_group_idx
+            # In bank change mode, always show the indicator regardless of which buttons pressed
+            show_indicator = bank_change_mode or indicator_idx not in pressed_button_indices
+            
+            if show_indicator:
+                # Check if we should blink this pixel (at bank limit)
+                if indicator_idx == blink_idx and blink_off:
+                    self.pixels[indicator_idx] = (0, 0, 0)
+                else:
+                    self.pixels[indicator_idx] = cfg.BANK_GROUP_INDICATOR_COLOR
 
     def indicate_locked_bank(self, bank_group_idx, locked_bank_idx):
         """
