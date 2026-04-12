@@ -40,6 +40,14 @@ class MidiController:
         self._last_unlocked_bank_idx = -1
         self._last_unlock_time = 0
 
+        # Bank change mode state
+        self.bank_change_mode_active = False  # True when in bank change mode (hide all button colors)
+        self.bank_change_exit_button_idx = -1  # Button that must be released to exit bank change mode
+        self.bank_limit_blink_idx = -1  # Button pixel to blink when at min/max
+        self.bank_limit_blink_time = 0  # When the blink started
+        self.bank_limit_blink_duration = 0.12  # Total on-off-on cycle duration (fast)
+        self.bank_limit_blink_locked = False  # If True, blink cycle is running and won't reset
+
         # Setup
         self.setup_sliders()
         self.setup_buttons()
@@ -89,26 +97,55 @@ class MidiController:
         top_hold_time = top_button.hold_time
         top_was_long_held = top_button.was_long_held
         top_new_release = top_button.detected_new_release
+        top_new_press = top_button.detected_new_press
 
         bottom_hold_time = bottom_button.hold_time
         bottom_was_long_held = bottom_button.was_long_held
         bottom_new_release = bottom_button.detected_new_release
+        bottom_new_press = bottom_button.detected_new_press
+        
+        # Check if middle buttons are held (prevents bank switch when multi-bank holding)
+        middle_buttons_held = (middle_button_T.hold_time > 0) or (middle_button_B.hold_time > 0)
+        
+        # Check if ONLY the initiating button is held (for entering bank change mode)
+        only_bottom_held = bottom_button.pressed and not any(b.pressed for b in [top_button, middle_button_T, middle_button_B])
+        only_top_held = top_button.pressed and not any(b.pressed for b in [bottom_button, middle_button_T, middle_button_B])
 
-        # Switch to next bank group if bottom is held, top is released
-        if bottom_hold_time > 0 and top_new_release and not top_was_long_held:
-            self.next_bank_group()
-            self.unlock_bank()
-            return
+        # Bank group switching logic:
+        # - First switch uses release (to distinguish from multi-bank hold intent)
+        # - Once in bank change mode, use click for faster switching
+        # - Only allow ENTERING bank change mode if ONLY the initiating button is held
+        # - While IN bank change mode, no restrictions (works as before)
+        
+        # Switch to next bank group (bottom held, top activated)
+        if bottom_hold_time > 0:
+            if self.bank_change_mode_active and top_new_press:
+                # Already in bank change mode - switch on click for rapid switching (no restrictions)
+                self.next_bank_group()
+                self.unlock_bank()
+                return
+            elif not self.bank_change_mode_active and top_new_release and not top_was_long_held and only_bottom_held:
+                # Entering bank change mode - only allow if ONLY bottom is held
+                self.next_bank_group()
+                self.unlock_bank()
+                return
 
-        # Switch to previous bank group if top is held, bottom is released
-        if top_hold_time > 0 and bottom_new_release and not bottom_was_long_held:
-            self.previous_bank_group()
-            self.unlock_bank()
-            return
+        # Switch to previous bank group (top held, bottom activated)
+        if top_hold_time > 0:
+            if self.bank_change_mode_active and bottom_new_press:
+                # Already in bank change mode - switch on click for rapid switching (no restrictions)
+                self.previous_bank_group()
+                self.unlock_bank()
+                return
+            elif not self.bank_change_mode_active and bottom_new_release and not bottom_was_long_held and only_top_held:
+                # Entering bank change mode - only allow if ONLY top is held
+                self.previous_bank_group()
+                self.unlock_bank()
+                return
 
-        # Check for Jump Mode
-        middle_buttons_held = (middle_button_T.hold_time > 0) and (middle_button_B.hold_time > 0)
-        if middle_buttons_held:
+        # Check for Jump Mode (requires BOTH middle buttons held)
+        both_middle_buttons_held = (middle_button_T.hold_time > 0) and (middle_button_B.hold_time > 0)
+        if both_middle_buttons_held:
             if top_new_release and not top_was_long_held:
                 self.jump_mode_enabled = not self.jump_mode_enabled
                 return  # Exit after toggling jump mode
@@ -129,28 +166,44 @@ class MidiController:
         all_buttons_released = all(not button.pressed for button in self.buttons)
         any_new_button_press = any(button.detected_new_press for button in self.buttons)
         
+        # Check if exit button for bank change mode was released
+        if self.bank_change_mode_active and self.bank_change_exit_button_idx != -1:
+            if not self.buttons[self.bank_change_exit_button_idx].pressed:
+                # Exit button released - exit bank change mode
+                self.bank_change_mode_active = False
+                self.bank_change_exit_button_idx = -1
+                self.bank_limit_blink_idx = -1
+                self.bank_limit_blink_locked = False
+        
         # Clear bank_group_just_changed when all buttons are released
         if all_buttons_released:
             self.bank_group_just_changed = False
+            # Also clear bank change mode state when all released
+            self.bank_change_mode_active = False
+            self.bank_change_exit_button_idx = -1
+            self.bank_limit_blink_idx = -1
+            self.bank_limit_blink_locked = False
         
         # Step 1: Set unlock_pending when all buttons are released after a lock
         if self.locked_bank_idx != -1 and all_buttons_released and not self.unlock_pending:
             self.unlock_pending = True
         
         # Step 2: Check for double-press events to lock/unlock
-        for idx, button in enumerate(self.buttons):
-            if button.was_double_pressed:
-                time_since_unlock = time.monotonic() - self._last_unlock_time
-                
-                # Filter: ignore double-press on same button that was just unlocked (within DOUBLE_PRESS_TIME)
-                if idx == self._last_unlocked_bank_idx and time_since_unlock < cfg.DOUBLE_PRESS_TIME:
-                    continue
-                
-                if self.locked_bank_idx == idx:
-                    self.unlock_bank()
-                else:
-                    self.lock_bank(idx)
-                return
+        # Skip if in bank change mode - no locking allowed until mode exits
+        if not self.bank_change_mode_active:
+            for idx, button in enumerate(self.buttons):
+                if button.was_double_pressed:
+                    time_since_unlock = time.monotonic() - self._last_unlock_time
+                    
+                    # Filter: ignore double-press on same button that was just unlocked (within DOUBLE_PRESS_TIME)
+                    if idx == self._last_unlocked_bank_idx and time_since_unlock < cfg.DOUBLE_PRESS_TIME:
+                        continue
+                    
+                    if self.locked_bank_idx == idx:
+                        self.unlock_bank()
+                    else:
+                        self.lock_bank(idx)
+                    return
         
         # Step 3: Check for new button press after unlock_pending is set
         if self.unlock_pending and any_new_button_press:
@@ -442,17 +495,90 @@ class MidiController:
     def next_bank_group(self):
         """
         Moves to the next bank group if available (no wrap-around).
+        Enters bank change mode - hides all button colors until exit button released.
         """
+        current_time = time.monotonic()
         new_idx = self.current_bank_group_idx + 1
+        
+        # Enter bank change mode - bottom button (idx 0) must be released to exit
+        self.bank_change_mode_active = True
+        self.bank_change_exit_button_idx = 0
+        self.bank_group_just_changed = True
+        
         if new_idx <= 3:
             self.current_bank_group_idx = new_idx
-            self.bank_group_just_changed = True
+            # Clear any pending limit blink on successful change
+            self.bank_limit_blink_idx = -1
+            self.bank_limit_blink_locked = False
+        else:
+            # Already at max - trigger a quick blink on the bank indicator pixel
+            # Only start new blink if not already in a locked blink cycle
+            if not self.bank_limit_blink_locked:
+                self.bank_limit_blink_idx = self.current_bank_group_idx
+                self.bank_limit_blink_time = current_time
+                self.bank_limit_blink_locked = True
 
     def previous_bank_group(self):
         """
         Moves to the previous bank group if available (no wrap-around).
+        Enters bank change mode - hides all button colors until exit button released.
         """
+        current_time = time.monotonic()
         new_idx = self.current_bank_group_idx - 1
+        
+        # Enter bank change mode - top button (idx 3) must be released to exit
+        self.bank_change_mode_active = True
+        self.bank_change_exit_button_idx = 3
+        self.bank_group_just_changed = True
+        
         if new_idx >= 0:
             self.current_bank_group_idx = new_idx
-            self.bank_group_just_changed = True
+            # Clear any pending limit blink on successful change
+            self.bank_limit_blink_idx = -1
+            self.bank_limit_blink_locked = False
+        else:
+            # Already at min - trigger a quick blink on the bank indicator pixel
+            # Only start new blink if not already in a locked blink cycle
+            if not self.bank_limit_blink_locked:
+                self.bank_limit_blink_idx = self.current_bank_group_idx
+                self.bank_limit_blink_time = current_time
+                self.bank_limit_blink_locked = True
+
+    def update_bank_change_feedback(self):
+        """
+        Returns current bank change mode feedback state for use by the lights manager.
+        
+        When in bank change mode, all button colors are hidden - only the bank indicator
+        (white dot) is shown, or the blink animation if at a limit.
+        
+        Blink cycle is on-off-on to ensure visibility even with repeated attempts.
+        
+        Returns:
+            dict: {
+                'bank_change_mode': bool (True if in bank change mode - hide all button colors),
+                'blink_button_idx': int (-1 if none),
+                'blink_off': bool (True if we're in the "off" phase of the blink)
+            }
+        """
+        current_time = time.monotonic()
+        blink_button_idx = -1
+        blink_off = False
+        
+        # Check if limit blink is active (on-off-on cycle)
+        if self.bank_limit_blink_idx != -1:
+            elapsed = current_time - self.bank_limit_blink_time
+            if elapsed < self.bank_limit_blink_duration:
+                blink_button_idx = self.bank_limit_blink_idx
+                # Divide cycle into thirds: ON (0-33%), OFF (33-66%), ON (66-100%)
+                cycle_position = elapsed / self.bank_limit_blink_duration
+                blink_off = (0.33 <= cycle_position < 0.66)
+            else:
+                # Blink cycle complete - unlock and clear
+                self.bank_limit_blink_idx = -1
+                self.bank_limit_blink_locked = False
+        
+        return {
+            'bank_change_mode': self.bank_change_mode_active,
+            'blink_button_idx': blink_button_idx,
+            'blink_off': blink_off
+        }
