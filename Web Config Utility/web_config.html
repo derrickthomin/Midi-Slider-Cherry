@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LumaFader Settings</title>
+    <style>
+        /* BLUEPRINT LIGHT: Off-white bg, technical drawing style, no grid, no dimension text */
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'IBM Plex Mono', 'Courier New', monospace;
+            background: #f3f2ee;
+            color: #2a3a5a;
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.5;
+            font-size: 13px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 2px;
+            font-weight: 600;
+            font-size: 18px;
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            color: #1a2a4a;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #7a8aaa;
+            margin-bottom: 20px;
+            font-size: 11px;
+            letter-spacing: 0.5em;
+            text-transform: uppercase;
+        }
+
+        .connection-bar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 24px;
+        }
+
+        button {
+            font-family: inherit;
+            background: transparent;
+            color: #2a4a7a;
+            border: 1.5px solid #4a6a9a;
+            padding: 8px 18px;
+            cursor: pointer;
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: rgba(42, 74, 122, 0.06);
+            border-color: #2a4a7a;
+        }
+        button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .status {
+            padding: 4px 12px;
+            font-size: 11px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            border: 1px solid;
+        }
+        .status.connected { color: #1a8a1a; border-color: #1a8a1a; }
+        .status.disconnected { color: #c05030; border-color: #c05030; }
+
+        .container { max-width: 1000px; margin: 0 auto; }
+
+        /* Page tabs */
+        .page-tabs {
+            display: flex; justify-content: center; gap: 0;
+            margin-bottom: -1.5px; position: relative; z-index: 2;
+        }
+        .page-tab {
+            padding: 6px 16px; font-family: inherit; font-size: 11px;
+            letter-spacing: 0.1em; text-transform: uppercase;
+            border: 1.5px solid #4a6a9a; border-bottom: 1.5px solid #4a6a9a;
+            background: #f3f2ee; color: #7a8aaa; cursor: pointer;
+            transition: all 0.15s; margin-left: -1.5px;
+        }
+        .page-tab:first-child { margin-left: 0; }
+        .page-tab:hover { color: #2a3a5a; background: #eae9e5; }
+        .page-tab.active {
+            background: #ffffff; color: #1a2a4a; font-weight: 600;
+            border-bottom-color: #ffffff;
+        }
+
+        /* Collapsible global/page settings */
+        .top-settings {
+            margin-bottom: 16px; border: 1px solid #b0bcd0;
+            background: #ffffff;
+        }
+        .top-settings-toggle {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 8px 14px; cursor: pointer; user-select: none;
+        }
+        .top-settings-toggle h3 {
+            font-size: 11px; font-weight: 600; color: #3a5a8a;
+            letter-spacing: 0.1em; text-transform: uppercase;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .top-settings-toggle .chevron {
+            font-size: 10px; color: #7a8aaa; transition: transform 0.2s;
+        }
+        .top-settings.collapsed .chevron { transform: rotate(-90deg); }
+        .top-settings-body {
+            display: flex; gap: 24px; padding: 0 14px 14px;
+        }
+        .top-settings.collapsed .top-settings-body { display: none; }
+        .top-settings-group { display: flex; flex-direction: column; gap: 6px; }
+        .top-settings-group label {
+            font-size: 10px; color: #7a8aaa; text-transform: uppercase; letter-spacing: 0.1em;
+        }
+        .top-settings-group input,
+        .top-settings-group select {
+            padding: 4px 8px; border: 1px solid #8a9ab8; background: transparent;
+            color: #2a3a5a; font-family: inherit; font-size: 12px;
+        }
+        .top-settings-group input:focus,
+        .top-settings-group select:focus { outline: none; border-color: #2a4a7a; }
+        .inherit-row {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 11px; color: #7a8aaa;
+        }
+        .top-settings-divider {
+            width: 1px; background: #b0bcd0; align-self: stretch;
+        }
+
+        /* Device caption labels */
+        .device-caption {
+            display: flex; justify-content: space-between; align-items: baseline;
+            padding: 0 2px; margin-top: 6px;
+        }
+        .device-caption-page {
+            font-style: italic; font-size: 11px; color: #7a8aaa;
+            letter-spacing: 0.08em;
+        }
+        .device-caption-bank {
+            font-style: italic; font-size: 11px; color: #7a8aaa;
+            letter-spacing: 0.08em;
+            position: absolute; left: 50%; transform: translateX(-50%);
+        }
+        .device-caption { position: relative; }
+
+        .last-midi {
+            position: absolute; bottom: 10px; left: 14px;
+            font-size: 10px; color: #7a8aaa; letter-spacing: 0.08em;
+            font-style: italic;
+        }
+
+        /* Specification box style — with drop shadow */
+        .section {
+            border: 1.5px solid #4a6a9a;
+            padding: 20px;
+            margin-bottom: 16px;
+            position: relative;
+            background: #ffffff;
+            box-shadow: -6px 6px 2px rgba(30, 50, 80, 0.18);
+        }
+        /* Corner marks */
+        .section::before, .section::after {
+            content: '+';
+            position: absolute;
+            color: #4a6a9a;
+            font-size: 10px;
+            line-height: 1;
+        }
+        .section::before { top: -5px; left: -2px; }
+        .section::after { bottom: -6px; right: -2px; }
+
+        .section h2 {
+            margin-bottom: 16px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #3a5a8a;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            padding-bottom: 6px;
+            border-bottom: 1px dashed #b0bcd0;
+        }
+
+        /* Device representation */
+        .device-frame {
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .device-visual {
+            display: flex;
+            gap: 24px;
+            align-items: stretch;
+            border: 1.5px solid #1a2a4a;
+            padding: 14px;
+            height: 289px; /* 258px inner = matches 4 bank panels */
+        }
+
+        .buttons-column { display: flex; flex-direction: column; justify-content: space-between; padding-right: 10px; }
+        .button-row { display: flex; align-items: center; gap: 8px; }
+
+        .button-led {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: 1px solid #b0bcd0;
+            background: transparent;
+            transition: all 0.2s;
+        }
+        .button-led.lit {
+            border-color: #1a8a1a;
+            background: #2aaa2a;
+            box-shadow: 0 0 6px rgba(42, 170, 42, 0.4);
+        }
+
+        .device-button {
+            width: 44px;
+            height: 44px;
+            border: 1.5px solid #4a6a9a;
+            background: transparent;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            color: #7a8aaa;
+            transition: all 0.15s;
+            position: relative;
+        }
+        /* Cross-hairs on buttons */
+        .device-button::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 8px; height: 1px;
+            background: #b0bcd0;
+            transform: translate(-50%, -50%);
+            opacity: 0.4;
+        }
+        .device-button:hover { border-color: #2a4a7a; color: #2a3a5a; }
+        .device-button.active, .device-button.selected {
+            border-color: #1a8a1a;
+            color: #1a8a1a;
+            background: rgba(42, 170, 42, 0.04);
+        }
+
+        .sliders-area { display: flex; gap: 28px; flex: 1; }
+        .slider-column {
+            display: flex; flex-direction: column; align-items: center;
+            position: relative; width: 44px;
+        }
+        .slider-label {
+            font-size: 11px; color: #7a8aaa; font-weight: 600;
+            margin-bottom: 6px; letter-spacing: 0.15em;
+        }
+
+        .slider-with-leds { display: flex; gap: 6px; align-items: stretch; flex: 1; }
+
+        .slider-track {
+            width: 8px; height: 100%;
+            position: relative;
+            border: 1px solid #4a6a9a;
+            background: transparent;
+        }
+        .slider-thumb {
+            position: absolute;
+            width: 18px; height: 2px;
+            left: -5px; top: 50%;
+            transform: translateY(-50%);
+            background: #1a2a4a;
+        }
+
+        .led-column { display: flex; flex-direction: column; justify-content: space-between; }
+        .led-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            border: 1px solid #b0bcd0;
+            transition: all 0.15s;
+        }
+        .led-dot.lit {
+            border-color: #d08020;
+            background: #d08020;
+            box-shadow: 0 0 4px rgba(208, 128, 32, 0.4);
+        }
+
+        .cc-input {
+            width: 44px; padding: 4px;
+            border: 1px solid #8a9ab8;
+            background: transparent;
+            color: #2a3a5a;
+            font-family: inherit; font-size: 12px;
+            text-align: center;
+        }
+        .cc-input:focus { outline: none; border-color: #2a4a7a; }
+        .cc-input.highlight {
+            border-color: #d08020;
+            background: rgba(208, 128, 32, 0.06);
+        }
+
+        .slider-controls-row {
+            display: flex; align-items: flex-start; gap: 24px;
+            margin-top: 36px; padding-left: 14px;
+        }
+        .controls-left {
+            width: 76px; display: flex; align-items: center;
+            padding-top: 4px; flex-shrink: 0;
+        }
+        .slider-controls-area { display: flex; gap: 28px; }
+        .slider-control { display: flex; flex-direction: column; align-items: center; width: 44px; gap: 4px; }
+        .learn-channel-label { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #7a8aaa; }
+        .learn-channel-label input[type="checkbox"] { width: 12px; height: 12px; margin: 0; accent-color: #1a8a1a; }
+
+        .slider-learn-btn {
+            padding: 3px 6px; font-size: 9px; font-family: inherit;
+            border: 1px solid #8a9ab8; background: transparent;
+            color: #7a8aaa; cursor: pointer;
+            transition: all 0.2s; text-align: center;
+            margin-top: 4px; text-transform: uppercase; letter-spacing: 0.1em;
+        }
+        .slider-learn-btn:hover { border-color: #2a4a7a; color: #2a3a5a; }
+        .slider-learn-btn.learning {
+            border-color: #d08020; color: #d08020;
+            animation: blink 0.5s ease-in-out infinite;
+        }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+        /* Settings layout */
+        .settings-layout { display: flex; gap: 36px; align-items: flex-start; justify-content: center; }
+
+        .section-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 16px; padding-bottom: 8px;
+            border-bottom: 1px dashed #b0bcd0;
+        }
+        .section-header-left { display: flex; align-items: center; gap: 10px; }
+        .section-header select {
+            font-family: inherit; padding: 4px 8px;
+            border: 1px solid #4a6a9a; background: transparent;
+            color: #2a3a5a; font-size: 12px;
+        }
+        .section-header select:focus { outline: none; border-color: #2a4a7a; }
+
+        .row-settings-column { display: flex; flex-direction: column; gap: 13px; width: 200px; flex-shrink: 0; position: relative; padding-top: 6px; }
+
+        .row-column-headers {
+            position: absolute; top: -12px; left: 0; right: 0;
+            display: flex; gap: 6px; padding: 0 10px;
+            font-size: 9px; color: #7a8aaa; text-transform: uppercase; letter-spacing: 0.15em;
+        }
+        .row-column-headers .header-inherit { width: 40px; }
+        .row-column-headers .header-ch { width: 60px; text-align: center; }
+        .row-column-headers .header-type { width: 70px; text-align: center; }
+
+        .row-settings-panel {
+            border: 1px solid #b0bcd0;
+            padding: 8px 10px;
+            height: 60px;
+            display: flex; flex-direction: column; justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: transparent;
+        }
+        .row-settings-panel:hover { border-color: #4a6a9a; }
+        .row-settings-panel.active {
+            border-color: #1a8a1a;
+            background: rgba(42, 170, 42, 0.03);
+        }
+        .row-settings-panel .row-label {
+            font-size: 10px; font-weight: 600; color: #7a8aaa;
+            margin-bottom: 4px; letter-spacing: 0.15em; text-transform: uppercase;
+        }
+        .row-settings-panel.active .row-label { color: #1a8a1a; }
+
+        .row-settings-panel .row-fields { display: flex; gap: 6px; align-items: center; }
+        .row-settings-panel .row-fields input,
+        .row-settings-panel .row-fields select {
+            padding: 3px 6px; border: 1px solid #b0bcd0; background: transparent;
+            color: #2a3a5a; font-family: inherit; font-size: 12px;
+        }
+        .row-settings-panel .row-fields input { width: 60px; }
+        .row-settings-panel .row-fields select { width: 70px; }
+        .row-settings-panel .row-fields input:focus,
+        .row-settings-panel .row-fields select:focus { outline: none; border-color: #2a4a7a; }
+        .row-settings-panel .row-fields input:disabled,
+        .row-settings-panel .row-fields select:disabled { color: #b0bcd0; border-color: #d0d8e4; cursor: not-allowed; }
+        .row-settings-panel .inherit-checkbox { width: 40px; height: 14px; margin: 0; cursor: pointer; accent-color: #1a8a1a; }
+        .row-settings-panel.inherited {
+            background: #f0efe9; opacity: 0.55;
+        }
+        .row-settings-panel.inherited .inherit-checkbox { opacity: 1; }
+
+        .device-column { flex-shrink: 0; }
+
+        .right-settings-column { display: none; }
+
+        .settings-panel {
+            border: 1px solid #8a9ab8;
+            padding: 12px;
+            position: relative;
+        }
+        /* Spec label */
+        .settings-panel::before {
+            content: 'SPEC';
+            position: absolute;
+            top: -7px; left: 8px;
+            font-size: 8px; letter-spacing: 0.2em; color: #8a9ab8;
+            background: #faf9f6;
+            padding: 0 4px;
+        }
+        .settings-panel h3 {
+            font-size: 11px; font-weight: 600; color: #3a5a8a;
+            margin-bottom: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+            display: flex; align-items: center; gap: 4px;
+        }
+        .settings-panel .panel-fields { display: flex; flex-direction: column; gap: 8px; }
+        .settings-panel .panel-field { display: flex; flex-direction: column; gap: 3px; }
+        .settings-panel .panel-field label { font-size: 10px; color: #7a8aaa; text-transform: uppercase; letter-spacing: 0.1em; }
+        .settings-panel .panel-field input,
+        .settings-panel .panel-field select {
+            padding: 6px 8px; border: 1px solid #8a9ab8; background: transparent;
+            color: #2a3a5a; font-family: inherit; font-size: 13px;
+        }
+        .settings-panel .panel-field input:focus,
+        .settings-panel .panel-field select:focus { outline: none; border-color: #2a4a7a; }
+
+        .help-icon {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 14px; height: 14px; font-size: 10px; font-weight: 600;
+            color: #7a8aaa; cursor: help; position: relative;
+        }
+        .help-icon:hover { color: #2a3a5a; }
+        .help-tooltip {
+            display: none; position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
+            background: #1a2a4a; color: #c8d4e8; padding: 8px 10px;
+            border: 1px solid #4a6a9a;
+            font-size: 11px; width: 220px; line-height: 1.4; z-index: 100;
+        }
+        .help-tooltip::after { content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%); border:5px solid transparent; border-top-color:#4a6a9a; }
+        .help-icon:hover .help-tooltip { display: block; }
+
+        .help-modal-btn {
+            width: 22px; height: 22px; font-size: 12px;
+            background: none; border: 1px solid #8a9ab8; color: #7a8aaa;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-family: inherit;
+        }
+        .help-modal-btn:hover { border-color: #2a4a7a; color: #2a3a5a; }
+
+        .actions {
+            display: flex; justify-content: center; gap: 12px; margin-top: 20px; align-items: center;
+        }
+        .actions button.save { border-color: #1a8a1a; color: #1a8a1a; }
+        .actions button.save:hover { background: rgba(42,170,42,0.06); }
+
+        .toast {
+            position: fixed; bottom: 20px; right: 20px;
+            padding: 10px 18px; font-family: inherit; font-size: 12px;
+            transform: translateY(80px); opacity: 0; transition: all 0.3s;
+            border: 1px solid;
+            display: none;
+        }
+
+        .inline-banner {
+            display: none; text-align: center;
+            padding: 8px 16px; font-size: 12px; letter-spacing: 0.06em;
+            border: 1.5px solid; margin-bottom: -1.5px; position: relative; z-index: 2;
+            animation: bannerFadeIn 0.2s ease;
+        }
+        .inline-banner.success { background: rgba(42,170,42,0.08); color: #1a8a1a; border-color: #1a8a1a; }
+        .inline-banner.error { background: rgba(200,60,40,0.08); color: #c05030; border-color: #c05030; }
+        .inline-banner.info { background: rgba(42,74,122,0.06); color: #2a4a7a; border-color: #4a6a9a; }
+        .inline-banner.show { display: block; }
+        @keyframes bannerFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .not-supported { text-align: center; padding: 40px; color: #c05030; }
+        .not-supported a { color: #3a5a8a; }
+
+        #settingsForm { display: none; }
+        #settingsForm.loaded { display: block; }
+        .loading { text-align: center; padding: 40px; color: #8a9ab8; font-size: 12px; letter-spacing: 0.1em; }
+
+        .instructions {
+            border: 1px solid #8a9ab8;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            max-width: 600px;
+            margin-left: auto; margin-right: auto;
+            position: relative;
+        }
+        .instructions::before {
+            content: 'PROCEDURE';
+            position: absolute; top: -7px; left: 10px;
+            font-size: 8px; letter-spacing: 0.2em; color: #8a9ab8;
+            background: #f3f2ee; padding: 0 4px;
+        }
+        .instructions.hidden { display: none; }
+        .instructions h3 { font-size: 12px; margin-bottom: 10px; color: #3a5a8a; letter-spacing: 0.12em; text-transform: uppercase; }
+        .instructions ol { padding-left: 20px; font-size: 12px; color: #4a6090; }
+        .instructions li { margin-bottom: 6px; }
+        .instructions .note {
+            margin-top: 12px; padding: 10px;
+            border: 1px solid rgba(208, 128, 32, 0.4);
+            font-size: 11px; color: #b07018;
+        }
+        .instructions .note strong { display: block; margin-bottom: 4px; }
+
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.4); z-index: 1000;
+            justify-content: center; align-items: center;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-content {
+            background: #faf9f6; border: 2px solid #4a6a9a;
+            padding: 28px 32px; max-width: 860px; width: 90vw; max-height: 85vh; overflow-y: auto;
+            position: relative;
+            box-shadow: 0 4px 20px rgba(30, 50, 80, 0.15);
+        }
+        .modal-content::before {
+            content: 'REFERENCE DOCUMENT';
+            position: absolute; top: -8px; left: 16px;
+            font-size: 8px; letter-spacing: 0.2em; color: #8a9ab8;
+            background: #faf9f6; padding: 0 6px;
+        }
+        .modal-content h2 { font-size: 15px; margin-bottom: 16px; color: #1a2a4a; letter-spacing: 0.1em; }
+        .modal-content h3 { font-size: 12px; margin: 16px 0 8px; color: #b07018; letter-spacing: 0.08em; text-transform: uppercase; }
+        .modal-content p, .modal-content li { font-size: 12px; line-height: 1.6; color: #4a6090; }
+        .modal-content ul { margin: 8px 0; padding-left: 20px; }
+        .modal-close { float: right; background: none; border: none; font-size: 20px; cursor: pointer; color: #7a8aaa; font-family: inherit; }
+        .modal-close:hover { color: #2a3a5a; }
+    </style>
+</head>
+<body>
+    <h1>LumaFader — Settings</h1>
+
+    <div id="notSupported" class="not-supported" style="display: none;">
+        <h2>Web Serial Not Supported</h2>
+        <p>Your browser doesn't support Web Serial API.</p>
+        <p>Please use <a href="https://www.google.com/chrome/" target="_blank">Chrome</a> or
+           <a href="https://www.microsoft.com/edge" target="_blank">Edge</a>.</p>
+    </div>
+
+    <div id="mainContent">
+        <div class="instructions">
+            <h3>Connection Procedure</h3>
+            <ol>
+                <li>Disconnect any serial monitor (Mu, Thonny, PuTTY, etc.) from the device.</li>
+                <li>Click "Connect" below and select the LumaFader from the port list.</li>
+                <li>Once linked, use physical controls (buttons/sliders) to navigate settings.</li>
+            </ol>
+            <div class="note">
+                <strong>NOTICE:</strong>
+                If the device was plugged in while holding all 4 buttons (USB drive mode), settings will be read-only. Reconnect normally to enable writing.
+            </div>
+        </div>
+
+        <div class="connection-bar">
+            <button id="connectBtn">Connect</button>
+            <span id="statusBadge" class="status disconnected">Disconnected</span>
+        </div>
+
+        <div class="container">
+            <div id="loadingMsg" class="loading">[ awaiting serial handshake ]</div>
+
+            <form id="settingsForm">
+                <div class="top-settings collapsed" id="topSettings">
+                    <div class="top-settings-toggle" id="topSettingsToggle">
+                        <h3>Global &amp; Page Settings <span class="help-icon">?<span class="help-tooltip">Default settings used when no bank overrides are set. Click to expand.</span></span></h3>
+                        <span class="chevron">&#9660;</span>
+                    </div>
+                    <div class="top-settings-body">
+                        <div class="top-settings-group">
+                            <label>Global Channel</label>
+                            <input type="text" id="globalChannel" value="1" title="1-16, or multi like 1|2|3">
+                        </div>
+                        <div class="top-settings-group">
+                            <label>Global Type</label>
+                            <select id="globalType"><option value="CC">CC</option><option value="AT">AT</option></select>
+                        </div>
+                        <div class="top-settings-divider"></div>
+                        <div class="top-settings-group">
+                            <label><span id="bankSettingsTitleText">Page 1</span> Channel</label>
+                            <input type="text" id="bankChannel" placeholder="-" title="Leave blank to use global">
+                        </div>
+                        <div class="top-settings-group">
+                            <label><span id="bankSettingsTitleText2">Page 1</span> Type</label>
+                            <select id="bankType"><option value="">-</option><option value="CC">CC</option><option value="AT">AT</option></select>
+                        </div>
+                        <div class="top-settings-group" style="justify-content:flex-end;">
+                            <div class="inherit-row">
+                                <input type="checkbox" id="bankInherit" class="inherit-checkbox" title="Inherit from global" style="width:14px;height:14px;margin:0;accent-color:#1a8a1a;">
+                                <label for="bankInherit">Inherit</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="inline-banner" id="inlineBanner"></div>
+                <div class="page-tabs" id="pageTabs">
+                    <div class="page-tab active" data-page="0">Page 1</div>
+                    <div class="page-tab" data-page="1">Page 2</div>
+                    <div class="page-tab" data-page="2">Page 3</div>
+                    <div class="page-tab" data-page="3">Page 4</div>
+                </div>
+
+                <div class="section">
+                    <div class="section-header" style="border-bottom:none;margin-bottom:8px;padding-bottom:0;">
+                        <div class="section-header-left"></div>
+                        <button type="button" class="help-modal-btn" id="openHelpModal">?</button>
+                    </div>
+
+                    <div class="settings-layout">
+                        <div class="row-settings-column">
+                            <div class="row-column-headers">
+                                <span class="header-inherit">Inherit</span>
+                                <span class="header-ch">Ch(s)</span>
+                                <span class="header-type">Type</span>
+                            </div>
+                            <div class="row-settings-panel" data-row="3">
+                                <div class="row-label">Bank 4</div>
+                                <div class="row-fields">
+                                    <input type="checkbox" id="rowInherit3" class="inherit-checkbox" title="Inherit from page/global">
+                                    <input type="text" id="rowChannel3" placeholder="-" title="Channel">
+                                    <select id="rowType3"><option value="">-</option><option value="CC">CC</option><option value="AT">AT</option></select>
+                                </div>
+                            </div>
+                            <div class="row-settings-panel" data-row="2">
+                                <div class="row-label">Bank 3</div>
+                                <div class="row-fields">
+                                    <input type="checkbox" id="rowInherit2" class="inherit-checkbox" title="Inherit from page/global">
+                                    <input type="text" id="rowChannel2" placeholder="-" title="Channel">
+                                    <select id="rowType2"><option value="">-</option><option value="CC">CC</option><option value="AT">AT</option></select>
+                                </div>
+                            </div>
+                            <div class="row-settings-panel" data-row="1">
+                                <div class="row-label">Bank 2</div>
+                                <div class="row-fields">
+                                    <input type="checkbox" id="rowInherit1" class="inherit-checkbox" title="Inherit from page/global">
+                                    <input type="text" id="rowChannel1" placeholder="-" title="Channel">
+                                    <select id="rowType1"><option value="">-</option><option value="CC">CC</option><option value="AT">AT</option></select>
+                                </div>
+                            </div>
+                            <div class="row-settings-panel" data-row="0">
+                                <div class="row-label">Bank 1</div>
+                                <div class="row-fields">
+                                    <input type="checkbox" id="rowInherit0" class="inherit-checkbox" title="Inherit from page/global">
+                                    <input type="text" id="rowChannel0" placeholder="-" title="Channel">
+                                    <select id="rowType0"><option value="">-</option><option value="CC">CC</option><option value="AT">AT</option></select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="device-column">
+                            <div class="device-frame">
+                                <div class="device-visual">
+                                    <div class="buttons-column">
+                                        <div class="button-row"><div class="device-button" data-btn="3">4</div><div class="button-led" id="btnLed3"></div></div>
+                                        <div class="button-row"><div class="device-button" data-btn="2">3</div><div class="button-led" id="btnLed2"></div></div>
+                                        <div class="button-row"><div class="device-button" data-btn="1">2</div><div class="button-led" id="btnLed1"></div></div>
+                                        <div class="button-row"><div class="device-button" data-btn="0">1</div><div class="button-led" id="btnLed0"></div></div>
+                                    </div>
+                                    <div class="sliders-area">
+                                        <div class="slider-column" data-slider="0">
+                                            <div class="slider-label">A</div>
+                                            <div class="slider-with-leds"><div class="slider-track"><div class="slider-thumb" id="thumb0"></div></div><div class="led-column" id="leds0"></div></div>
+                                        </div>
+                                        <div class="slider-column" data-slider="1">
+                                            <div class="slider-label">B</div>
+                                            <div class="slider-with-leds"><div class="slider-track"><div class="slider-thumb" id="thumb1"></div></div><div class="led-column" id="leds1"></div></div>
+                                        </div>
+                                        <div class="slider-column" data-slider="2">
+                                            <div class="slider-label">C</div>
+                                            <div class="slider-with-leds"><div class="slider-track"><div class="slider-thumb" id="thumb2"></div></div><div class="led-column" id="leds2"></div></div>
+                                        </div>
+                                        <div class="slider-column" data-slider="3">
+                                            <div class="slider-label">D</div>
+                                            <div class="slider-with-leds"><div class="slider-track"><div class="slider-thumb" id="thumb3"></div></div><div class="led-column" id="leds3"></div></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="device-caption">
+                                    <span class="device-caption-page" id="captionPage">Pg 1</span>
+                                    <span class="device-caption-bank" id="captionBank">Global</span>
+                                </div>
+                                <div class="slider-controls-row">
+                                    <div class="controls-left">
+                                        <label class="learn-channel-label">
+                                            <input type="checkbox" id="learnChannel" title="Also set channel from incoming MIDI">
+                                            <span>Learn Ch</span>
+                                        </label>
+                                    </div>
+                                    <div class="slider-controls-area">
+                                        <div class="slider-control">
+                                            <input type="number" class="cc-input" id="sliderCC0" min="0" max="127" value="0">
+                                            <button type="button" class="slider-learn-btn" data-slider="0">Learn</button>
+                                        </div>
+                                        <div class="slider-control">
+                                            <input type="number" class="cc-input" id="sliderCC1" min="0" max="127" value="0">
+                                            <button type="button" class="slider-learn-btn" data-slider="1">Learn</button>
+                                        </div>
+                                        <div class="slider-control">
+                                            <input type="number" class="cc-input" id="sliderCC2" min="0" max="127" value="0">
+                                            <button type="button" class="slider-learn-btn" data-slider="2">Learn</button>
+                                        </div>
+                                        <div class="slider-control">
+                                            <input type="number" class="cc-input" id="sliderCC3" min="0" max="127" value="0">
+                                            <button type="button" class="slider-learn-btn" data-slider="3">Learn</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="right-settings-column">
+                            <div class="settings-panel">
+                                <h3>Global <span class="help-icon">?<span class="help-tooltip">Default settings used when no row or bank overrides are set.</span></span></h3>
+                                <div class="panel-fields">
+                                    <div class="panel-field"><label>Channel</label><input type="text" id="globalChannel" value="1" title="1-16, or multi like 1|2|3"></div>
+                                    <div class="panel-field"><label>Type</label><select id="globalType"><option value="CC">CC</option><option value="AT">AT</option></select></div>
+                                </div>
+                            </div>
+                            <div class="settings-panel">
+                                <h3><span id="bankSettingsTitleText">Page 1</span> <span class="help-icon">?<span class="help-tooltip">Page-level defaults. Banks inherit from here if their values are blank.</span></span></h3>
+                                <div class="panel-fields">
+                                    <div class="panel-field" style="flex-direction:row;align-items:center;gap:8px;">
+                                        <input type="checkbox" id="bankInherit" class="inherit-checkbox" title="Inherit from global">
+                                        <label for="bankInherit" style="font-size:11px;">Inherit</label>
+                                    </div>
+                                    <div class="panel-field"><label>Channel</label><input type="text" id="bankChannel" placeholder="-" title="Leave blank to use global"></div>
+                                    <div class="panel-field"><label>Type</label><select id="bankType"><option value="">-</option><option value="CC">CC</option><option value="AT">AT</option></select></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="last-midi" id="lastMidi">Last MIDI In: —</span>
+                </div>
+
+                <div class="actions">
+                    <button type="submit" class="save">Save Settings</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <div id="helpModal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeHelpModal()">&times;</button>
+
+            <h3>Settings Cascade</h3>
+            <p>Channel(s) and message type inherit downward. You only need to set the global level unless you want per-page or per-bank differences. Check "Inherit" on a bank or page to use the parent value.</p>
+            <div style="display:flex;align-items:flex-start;justify-content:center;gap:0;margin:10px 0 14px;font-size:13px;color:#2a3a5a;">
+                <div style="text-align:center;"><strong>Bank</strong><br><span style="font-size:10px;color:#7a8aaa;">most specific</span></div>
+                <span style="padding:2px 10px 0;color:#7a8aaa;">&rarr;</span>
+                <strong style="padding-top:2px;">Page</strong>
+                <span style="padding:2px 10px 0;color:#7a8aaa;">&rarr;</span>
+                <strong style="padding-top:2px;">Global</strong>
+            </div>
+
+            <h3>Pages (1–4)</h3>
+            <p>Pages store completely separate sets of banks, channel(s), and type settings. Switch pages in the web UI with the tabs above, or on the device by holding button 1 and tapping button 4 (next) or holding button 4 and tapping button 1 (previous).</p>
+
+            <h3>Banks (1–4)</h3>
+            <p>Each page has 4 banks — press a device button (or click one in the UI) to select one. Each bank stores its own CC values for all 4 sliders and can optionally override the page's channel(s) and type. When no bank is selected, the "Global" CC values are used. Double-press a button to lock that bank so it stays active after release.</p>
+
+            <h3>Sliders (A–D)</h3>
+            <p>Each slider sends a MIDI message using its assigned CC number (0–127). The number fields below the device visual set the CC number per slider. Moving a physical slider highlights the corresponding field in the UI.</p>
+
+            <h3>Channel(s)</h3>
+            <p>Set the MIDI channel (1–16) messages are sent on. For <strong>multiple channels</strong> simultaneously, separate with a pipe: <code style="background:#f0efe9;padding:1px 4px;border:1px solid #b0bcd0;">1|2|5</code>. Useful for controlling parameters across several instruments at once.</p>
+
+            <h3>Message Type</h3>
+            <p><strong>CC</strong> — Control Change (most common). Sends the slider's CC number with the current value.<br>
+            <strong>AT</strong> — Channel Aftertouch. Sends slider value as pressure on the selected channel(s); CC number is ignored.</p>
+
+            <h3>MIDI Learn</h3>
+            <p>Click <strong>Learn</strong> beneath a slider, then send a CC from your DAW or controller — the incoming CC number is assigned to that slider. Enable the <strong>"Learn Ch"</strong> checkbox (bottom-left) to also apply the incoming channel to the current bank or global channel(s). Times out after 30 seconds.</p>
+
+            <h3>Saving</h3>
+            <p>Click <strong>Save Settings</strong> to write to the device. <strong>Unplug and re-plug</strong> for changes to take effect.</p>
+
+            <hr style="border:none;border-top:1px dashed #b0bcd0;margin:16px 0;">
+            <p style="font-size:11px;color:#7a8aaa;text-align:center;">Source &amp; docs: <a href="https://github.com/derrickthomin/Midi-Slider-Cherry" target="_blank" style="color:#3a5a8a;">github.com/derrickthomin/Midi-Slider-Cherry</a></p>
+        </div>
+    </div>
+
+    <script>
+        if (!('serial' in navigator)) {
+            document.getElementById('notSupported').style.display = 'block';
+            document.getElementById('mainContent').style.display = 'none';
+        }
+
+        for (let s = 0; s < 4; s++) {
+            const ledCol = document.getElementById('leds' + s);
+            for (let i = 0; i < 16; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'led-dot';
+                dot.dataset.led = i;
+                ledCol.appendChild(dot);
+            }
+        }
+
+        let port = null;
+        let reader = null;
+        let writer = null;
+        let readBuffer = '';
+        let statusPollInterval = null;
+        let pingInterval = null;
+        let settings = null;
+        let currentPage = 0;
+        let currentBank = -1;
+        let lastMovedSlider = -1;
+        let learnModeSlider = -1;
+        let lastDevicePage = 0;
+
+        const connectBtn = document.getElementById('connectBtn');
+        const statusBadge = document.getElementById('statusBadge');
+        const settingsForm = document.getElementById('settingsForm');
+        const loadingMsg = document.getElementById('loadingMsg');
+        const toast = document.getElementById('toast');
+
+        let bannerTimeout = null;
+        function showToast(message, type = 'success', duration = 3000) {
+            const banner = document.getElementById('inlineBanner');
+            const tabs = document.getElementById('pageTabs');
+            banner.textContent = message;
+            banner.style.display = '';
+            banner.className = `inline-banner ${type} show`;
+            tabs.style.display = 'none';
+            if (bannerTimeout) clearTimeout(bannerTimeout);
+            bannerTimeout = setTimeout(() => {
+                banner.className = 'inline-banner';
+                tabs.style.display = '';
+                bannerTimeout = null;
+            }, duration);
+        }
+
+        function openHelpModal() { document.getElementById('helpModal').classList.add('show'); }
+        function closeHelpModal() { document.getElementById('helpModal').classList.remove('show'); }
+        document.getElementById('helpModal').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeHelpModal(); });
+        document.getElementById('openHelpModal').addEventListener('click', openHelpModal);
+
+        for (let i = 0; i < 4; i++) {
+            document.getElementById('rowInherit' + i).addEventListener('change', function() {
+                const panel = this.closest('.row-settings-panel');
+                const channelInput = document.getElementById('rowChannel' + i);
+                const typeSelect = document.getElementById('rowType' + i);
+                if (this.checked) {
+                    channelInput.value = ''; typeSelect.value = '';
+                    channelInput.disabled = true; typeSelect.disabled = true;
+                    panel.classList.add('inherited');
+                } else {
+                    channelInput.disabled = false; typeSelect.disabled = false;
+                    panel.classList.remove('inherited');
+                }
+            });
+        }
+
+        document.getElementById('bankInherit').addEventListener('change', function() {
+            const channelInput = document.getElementById('bankChannel');
+            const typeSelect = document.getElementById('bankType');
+            if (this.checked) {
+                channelInput.value = ''; typeSelect.value = '';
+                channelInput.disabled = true; typeSelect.disabled = true;
+            } else {
+                channelInput.disabled = false; typeSelect.disabled = false;
+            }
+        });
+
+        function updateLearnButtonStates() {
+            document.querySelectorAll('.slider-learn-btn').forEach(btn => {
+                const sliderIdx = parseInt(btn.dataset.slider);
+                btn.classList.toggle('learning', sliderIdx === learnModeSlider);
+                btn.textContent = sliderIdx === learnModeSlider ? 'Learning...' : 'Learn';
+            });
+        }
+
+        async function startLearn(sliderIdx) {
+            if (!writer) return;
+            if (learnModeSlider === sliderIdx) { await sendCommand('STOP_LEARN'); return; }
+            if (learnModeSlider !== -1) { await sendCommand('STOP_LEARN'); }
+            await sendCommand('START_LEARN|' + sliderIdx);
+        }
+
+        function handleLearnedCC(sliderIdx, ccNumber, channel) {
+            document.getElementById('sliderCC' + sliderIdx).value = ccNumber;
+            if (document.getElementById('learnChannel').checked) {
+                if (currentBank === -1) {
+                    document.getElementById('globalChannel').value = channel;
+                } else {
+                    const inheritCheckbox = document.getElementById('rowInherit' + currentBank);
+                    if (inheritCheckbox.checked) {
+                        inheritCheckbox.checked = false;
+                        document.getElementById('rowChannel' + currentBank).disabled = false;
+                        document.getElementById('rowType' + currentBank).disabled = false;
+                    }
+                    document.getElementById('rowChannel' + currentBank).value = channel;
+                }
+            }
+            showToast(`Learned CC ${ccNumber} on channel ${channel}`, 'success');
+            document.getElementById('lastMidi').textContent = `Last MIDI In: CC ${ccNumber}, Ch ${channel}`;
+        }
+
+        document.querySelectorAll('.slider-learn-btn').forEach(btn => {
+            btn.addEventListener('click', () => startLearn(parseInt(btn.dataset.slider)));
+        });
+
+        function updateBankIndicator() {
+            document.getElementById('bankSettingsTitleText').textContent = `Page ${currentPage + 1}`;
+            const titleText2 = document.getElementById('bankSettingsTitleText2');
+            if (titleText2) titleText2.textContent = `Page ${currentPage + 1}`;
+            document.getElementById('captionPage').textContent = `Pg ${currentPage + 1}`;
+            document.getElementById('captionBank').textContent = currentBank === -1 ? 'Global' : `Bank ${currentBank + 1}`;
+            document.querySelectorAll('.page-tab').forEach(tab => {
+                tab.classList.toggle('active', parseInt(tab.dataset.page) === currentPage);
+            });
+            document.querySelectorAll('.row-settings-panel').forEach(panel => {
+                const idx = parseInt(panel.dataset.row);
+                panel.classList.toggle('active', idx === currentBank);
+            });
+        }
+
+        function updateButtonsVisual(lockedBank) {
+            document.querySelectorAll('.device-button').forEach(btn => {
+                const idx = parseInt(btn.dataset.btn);
+                const isLocked = idx === lockedBank;
+                btn.classList.toggle('active', isLocked);
+                btn.classList.toggle('selected', isLocked);
+                const led = document.getElementById('btnLed' + idx);
+                if (led) led.classList.toggle('lit', isLocked);
+            });
+        }
+
+        function updateSliderVisual(sliderValues) {
+            sliderValues.forEach((val, idx) => {
+                const thumb = document.getElementById('thumb' + idx);
+                const percent = 100 - (val / 127 * 100);
+                thumb.style.top = percent + '%';
+                const leds = document.querySelectorAll(`#leds${idx} .led-dot`);
+                const litCount = Math.floor(val / 127 * 16);
+                leds.forEach((led, ledIdx) => { led.classList.toggle('lit', (15 - ledIdx) < litCount); });
+            });
+        }
+
+        function loadCurrentCCValues() {
+            if (!settings) return;
+            let ccValues;
+            if (currentBank === -1) {
+                ccValues = settings.GLOBAL_CC_BANK || [0, 0, 0, 0];
+            } else {
+                const pageKey = `PAGE_${currentPage + 1}_BANKS`;
+                const pageData = settings[pageKey];
+                ccValues = pageData ? pageData[currentBank] || [0, 0, 0, 0] : [0, 0, 0, 0];
+            }
+            for (let i = 0; i < 4; i++) document.getElementById('sliderCC' + i).value = ccValues[i];
+
+            const bankChKey = `PAGE_${currentPage + 1}_BANK_CHANNELS`;
+            const bankTyKey = `PAGE_${currentPage + 1}_BANK_TYPES`;
+            const bankChannels = settings[bankChKey] || ['', '', '', ''];
+            const bankTypes = settings[bankTyKey] || ['', '', '', ''];
+
+            for (let i = 0; i < 4; i++) {
+                const channelVal = bankChannels[i] || '';
+                const typeVal = bankTypes[i] || '';
+                const inheritCheckbox = document.getElementById('rowInherit' + i);
+                const channelInput = document.getElementById('rowChannel' + i);
+                const typeSelect = document.getElementById('rowType' + i);
+                const panel = inheritCheckbox.closest('.row-settings-panel');
+                const shouldInherit = channelVal === '' && typeVal === '';
+                inheritCheckbox.checked = shouldInherit;
+                channelInput.value = channelVal;
+                typeSelect.value = typeVal;
+                channelInput.disabled = shouldInherit;
+                typeSelect.disabled = shouldInherit;
+                panel.classList.toggle('inherited', shouldInherit);
+            }
+
+            const pageChKey = `PAGE_${currentPage + 1}_CHANNEL`;
+            const pageTyKey = `PAGE_${currentPage + 1}_TYPE`;
+            const pageChVal = settings[pageChKey] || '';
+            const pageTyVal = settings[pageTyKey] || '';
+            const bankInheritCheckbox = document.getElementById('bankInherit');
+            const bankChannelInput = document.getElementById('bankChannel');
+            const bankTypeSelect = document.getElementById('bankType');
+            const pageShouldInherit = pageChVal === '' && pageTyVal === '';
+            bankInheritCheckbox.checked = pageShouldInherit;
+            bankChannelInput.value = pageChVal;
+            bankTypeSelect.value = pageTyVal;
+            bankChannelInput.disabled = pageShouldInherit;
+            bankTypeSelect.disabled = pageShouldInherit;
+        }
+
+        function saveCurrentCCValues() {
+            if (!settings) return;
+            const ccValues = [];
+            for (let i = 0; i < 4; i++) ccValues.push(parseInt(document.getElementById('sliderCC' + i).value) || 0);
+            if (currentBank === -1) { settings.GLOBAL_CC_BANK = ccValues; }
+            else {
+                const pageKey = `PAGE_${currentPage + 1}_BANKS`;
+                if (!settings[pageKey]) settings[pageKey] = [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]];
+                settings[pageKey][currentBank] = ccValues;
+            }
+            const bankChKey = `PAGE_${currentPage + 1}_BANK_CHANNELS`;
+            const bankTyKey = `PAGE_${currentPage + 1}_BANK_TYPES`;
+            if (!settings[bankChKey]) settings[bankChKey] = ['', '', '', ''];
+            if (!settings[bankTyKey]) settings[bankTyKey] = ['', '', '', ''];
+            for (let i = 0; i < 4; i++) {
+                const inheritChecked = document.getElementById('rowInherit' + i).checked;
+                settings[bankChKey][i] = inheritChecked ? '' : document.getElementById('rowChannel' + i).value;
+                settings[bankTyKey][i] = inheritChecked ? '' : document.getElementById('rowType' + i).value;
+            }
+            const pageChKey = `PAGE_${currentPage + 1}_CHANNEL`;
+            const pageTyKey = `PAGE_${currentPage + 1}_TYPE`;
+            const bankInheritChecked = document.getElementById('bankInherit').checked;
+            settings[pageChKey] = bankInheritChecked ? '' : document.getElementById('bankChannel').value;
+            settings[pageTyKey] = bankInheritChecked ? '' : document.getElementById('bankType').value;
+        }
+
+        function jumpToBank(bankIdx, focusChannel = false) {
+            saveCurrentCCValues();
+            currentBank = bankIdx;
+            updateBankIndicator();
+            loadCurrentCCValues();
+            updateButtonsVisual(currentBank);
+            if (port) sendCommand('SET_LOCKED_BANK|' + bankIdx);
+            if (focusChannel && bankIdx >= 0) {
+                setTimeout(() => { const input = document.getElementById('rowChannel' + bankIdx); if (input) { input.focus(); input.select(); } }, 50);
+            }
+        }
+
+        function highlightSliderField(sliderIdx) {
+            document.querySelectorAll('.cc-input').forEach(input => input.classList.remove('highlight'));
+            if (sliderIdx >= 0 && sliderIdx < 4) {
+                const input = document.getElementById('sliderCC' + sliderIdx);
+                input.classList.add('highlight'); input.focus(); input.select();
+            }
+        }
+
+        function handleStatus(data) {
+            if (!data.ready) return;
+            const lockedBank = data.locked_bank !== undefined ? data.locked_bank : -1;
+            const devicePage = data.page;
+            updateSliderVisual(data.slider_values || [0, 0, 0, 0]);
+            updateButtonsVisual(lockedBank);
+            if (devicePage !== lastDevicePage) { lastDevicePage = devicePage; saveCurrentCCValues(); currentPage = devicePage; updateBankIndicator(); loadCurrentCCValues(); }
+            if (lockedBank !== currentBank) { saveCurrentCCValues(); currentBank = lockedBank; updateBankIndicator(); loadCurrentCCValues(); }
+            if (data.last_moved_slider !== lastMovedSlider && data.last_moved_slider >= 0) { lastMovedSlider = data.last_moved_slider; highlightSliderField(lastMovedSlider); }
+            if (data.last_midi_type && data.last_midi_num !== undefined && data.last_midi_ch !== undefined) {
+                const label = data.last_midi_type === 'AT' ? `AT ${data.last_midi_num}` : `CC ${data.last_midi_num}`;
+                document.getElementById('lastMidi').textContent = `Last MIDI In: ${label}, Ch ${data.last_midi_ch}`;
+            }
+        }
+
+        connectBtn.addEventListener('click', async () => { if (port) await disconnect(); else await connect(); });
+
+        async function connect() {
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 115200 });
+                writer = port.writable.getWriter();
+                reader = port.readable.getReader();
+                statusBadge.textContent = 'Connected';
+                statusBadge.className = 'status connected';
+                connectBtn.textContent = 'Disconnect';
+                document.querySelector('.instructions').classList.add('hidden');
+                readLoop();
+                setTimeout(() => sendCommand('PING'), 500);
+                setTimeout(() => sendCommand('SET_CONFIG_MODE|1'), 600);
+                setTimeout(() => sendCommand('GET_SETTINGS'), 1000);
+                statusPollInterval = setInterval(() => sendCommand('GET_STATUS'), 100);
+                pingInterval = setInterval(() => sendCommand('PING'), 2000);
+            } catch (err) { console.error('Connection failed:', err); showToast('Failed to connect: ' + err.message, 'error'); }
+        }
+
+        async function disconnect() {
+            if (statusPollInterval) { clearInterval(statusPollInterval); statusPollInterval = null; }
+            if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+            try {
+                if (writer) { try { await sendCommand('SET_CONFIG_MODE|0'); await new Promise(resolve => setTimeout(resolve, 100)); } catch (e) {} }
+                if (reader) { await reader.cancel(); reader.releaseLock(); reader = null; }
+                if (writer) { writer.releaseLock(); writer = null; }
+                if (port) { await port.close(); port = null; }
+                statusBadge.textContent = 'Disconnected';
+                statusBadge.className = 'status disconnected';
+                connectBtn.textContent = 'Connect';
+                settingsForm.classList.remove('loaded');
+                loadingMsg.style.display = 'block';
+                document.querySelector('.instructions').classList.remove('hidden');
+            } catch (err) { console.error('Disconnect error:', err); }
+        }
+
+        async function sendCommand(cmd) { if (!writer) return; await writer.write(new TextEncoder().encode('CMD:' + cmd + '\n')); }
+
+        async function readLoop() {
+            const decoder = new TextDecoder();
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    readBuffer += decoder.decode(value);
+                    let newlineIdx;
+                    while ((newlineIdx = readBuffer.indexOf('\n')) !== -1) {
+                        const line = readBuffer.slice(0, newlineIdx).trim();
+                        readBuffer = readBuffer.slice(newlineIdx + 1);
+                        if (line.startsWith('RSP:')) {
+                            try { handleResponse(JSON.parse(line.slice(4))); } catch (e) { console.error('JSON parse error:', e); }
+                        }
+                    }
+                }
+            } catch (err) { if (err.name !== 'NetworkError') console.error('Read error:', err); }
+        }
+
+        function handleResponse(data) {
+            if (data.error) { showToast('Error: ' + data.error, 'error'); return; }
+            if (data.device === 'lumafader') return;
+            if (data.status === 'ok') return;
+            if (data.type === 'status') { handleStatus(data); return; }
+            if (data.type === 'learn_started') { learnModeSlider = data.slider; updateLearnButtonStates(); return; }
+            if (data.type === 'learned') { handleLearnedCC(data.slider, data.cc, data.channel); learnModeSlider = -1; updateLearnButtonStates(); return; }
+            if (data.type === 'learn_timeout' || data.type === 'learn_stopped') { learnModeSlider = -1; updateLearnButtonStates(); if (data.type === 'learn_timeout') showToast('Learn mode timed out', 'error'); return; }
+            if (data.GLOBAL_CC_BANK !== undefined) { settings = data; populateForm(data); }
+        }
+
+        function populateForm(data) {
+            document.getElementById('globalChannel').value = data.GLOBAL_CHANNEL || 1;
+            document.getElementById('globalType').value = data.GLOBAL_MESSAGE_TYPE || 'CC';
+            loadCurrentCCValues();
+            updateBankIndicator();
+            loadingMsg.style.display = 'none';
+            settingsForm.classList.add('loaded');
+        }
+
+        function collectFormData() {
+            saveCurrentCCValues();
+            settings.GLOBAL_CHANNEL = document.getElementById('globalChannel').value;
+            settings.GLOBAL_MESSAGE_TYPE = document.getElementById('globalType').value;
+            delete settings._help;
+            return settings;
+        }
+
+        document.querySelectorAll('.page-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const page = parseInt(tab.dataset.page);
+                if (page === currentPage) return;
+                saveCurrentCCValues();
+                currentPage = page;
+                updateBankIndicator();
+                loadCurrentCCValues();
+            });
+        });
+
+        document.getElementById('topSettingsToggle').addEventListener('click', () => {
+            document.getElementById('topSettings').classList.toggle('collapsed');
+        });
+
+        document.querySelectorAll('.device-button').forEach(btn => {
+            btn.addEventListener('click', () => { const idx = parseInt(btn.dataset.btn); const newBank = (currentBank === idx) ? -1 : idx; jumpToBank(newBank, newBank >= 0); });
+        });
+
+        document.querySelectorAll('.row-settings-panel').forEach(panel => {
+            panel.addEventListener('click', (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+                const idx = parseInt(panel.dataset.row);
+                const newBank = (currentBank === idx) ? -1 : idx;
+                jumpToBank(newBank, false);
+            });
+        });
+
+        for (let i = 0; i < 4; i++) {
+            const channelInput = document.getElementById('rowChannel' + i);
+            const typeSelect = document.getElementById('rowType' + i);
+            [channelInput, typeSelect].forEach(el => { if (el) el.addEventListener('focus', () => { if (currentBank !== i) jumpToBank(i, false); }); });
+        }
+
+        settingsForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = collectFormData();
+            await sendCommand('SET_SETTINGS|' + JSON.stringify(data));
+            showToast('Settings saved! Unplug and re-plug the device to apply.', 'success', 2000);
+        });
+        window.addEventListener('beforeunload', disconnect);
+    </script>
+</body>
+</html>

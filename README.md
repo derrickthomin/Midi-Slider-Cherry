@@ -10,6 +10,7 @@ The LumaFader 68 is a compact MIDI controller featuring four long-throw faders, 
 
 ## Links
 
+*   **Web Config Utility:** [Open Web Config](https://derrickthomin.github.io/Midi-Slider-Cherry/) — configure your LumaFader from the browser (Chrome/Edge, requires Web Serial)
 *   **Project Writeup:** [www.djbajablast.com/post/lumafader68](https://www.djbajablast.com/post/lumafader68)
 *   **Buy:** [Etsy - DJBB LumaFader 68](https://www.etsy.com/listing/1872693350/djbb-lumafader-68-midi-controller-rgb)
 

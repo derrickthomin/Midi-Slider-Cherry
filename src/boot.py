@@ -2,7 +2,9 @@ import storage
 import board
 import digitalio
 import microcontroller
+import supervisor
 
+supervisor.set_usb_identification(manufacturer="DerrickThomin", product="LumaFader")
 microcontroller.cpu.frequency = 270_000_000  # RP2040 Safe to 2X overclock
 
 storage.remount("/", readonly=False)
@@ -24,7 +26,7 @@ btn2.direction = digitalio.Direction.INPUT
 btn2.pull = digitalio.Pull.UP
 
 btn3 = digitalio.DigitalInOut(board.GP3)
-btn3.direction = digitalio.Direction.INPUT
+btn3.direction = digitalio.Direction.INPUTq
 btn3.pull = digitalio.Pull.UP
 
 # All buttons pressed = all values are False (LOW due to pull-up)

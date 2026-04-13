@@ -15,25 +15,25 @@ class Settings:
     
     # Default CC bank settings
     DEFAULT_GLOBAL_CC_BANK = [0, 1, 2, 3]
-    DEFAULT_CC_BANKS_1 = [
+    DEFAULT_PAGE_1_BANKS = [
         [4, 5, 6, 7],
         [8, 9, 10, 11],
         [12, 13, 14, 15],
         [16, 17, 18, 19]
     ]
-    DEFAULT_CC_BANKS_2 = [
+    DEFAULT_PAGE_2_BANKS = [
         [20, 21, 22, 23],
         [24, 25, 26, 27],
         [28, 29, 30, 31],
         [32, 33, 34, 35]
     ]
-    DEFAULT_CC_BANKS_3 = [
+    DEFAULT_PAGE_3_BANKS = [
         [36, 37, 38, 39],
         [40, 41, 42, 43],
         [44, 45, 46, 47],
         [48, 49, 50, 51]
     ]
-    DEFAULT_CC_BANKS_4 = [
+    DEFAULT_PAGE_4_BANKS = [
         [52, 53, 54, 55],
         [56, 57, 58, 59],
         [60, 61, 62, 63],
@@ -83,10 +83,10 @@ class Settings:
         # Check if required keys exist
         required_keys = [
             "GLOBAL_CC_BANK", 
-            "CC_BANKS_1", 
-            "CC_BANKS_2", 
-            "CC_BANKS_3", 
-            "CC_BANKS_4"
+            "PAGE_1_BANKS", 
+            "PAGE_2_BANKS", 
+            "PAGE_3_BANKS", 
+            "PAGE_4_BANKS"
         ]
         
         for key in required_keys:
@@ -98,9 +98,9 @@ class Settings:
         if not self._validate_cc_list(self.settings["GLOBAL_CC_BANK"], 4):
             return False
             
-        # Validate CC_BANKS (4x4 arrays of integers between 0-127)
-        for bank_key in ["CC_BANKS_1", "CC_BANKS_2", "CC_BANKS_3", "CC_BANKS_4"]:
-            if not self._validate_cc_banks(self.settings[bank_key]):
+        # Validate page banks (4x4 arrays of integers between 0-127)
+        for page_key in ["PAGE_1_BANKS", "PAGE_2_BANKS", "PAGE_3_BANKS", "PAGE_4_BANKS"]:
+            if not self._validate_page_banks(self.settings[page_key]):
                 return False
                 
         return True
@@ -127,9 +127,9 @@ class Settings:
                 
         return True
     
-    def _validate_cc_banks(self, banks):
+    def _validate_page_banks(self, banks):
         """
-        Validate a 4x4 array of CC banks.
+        Validate a 4x4 array of banks for a page.
         
         Args:
             banks: The banks to validate
@@ -138,7 +138,7 @@ class Settings:
             bool: True if valid, False otherwise
         """
         if not isinstance(banks, list) or len(banks) != 4:
-            print("CC banks must be a list of 4 lists")
+            print("Page banks must be a list of 4 lists")
             return False
             
         for bank in banks:
@@ -150,33 +150,33 @@ class Settings:
     def _use_defaults(self):
         """
         Set settings to factory default values.
-        Channel settings use None to inherit (row→bank→global).
-        Type settings use None to inherit (row→bank→global), defaulting to "CC".
+        Channel settings use None to inherit (bank→page→global).
+        Type settings use None to inherit (bank→page→global), defaulting to "CC".
         """
         self.settings = {
             "GLOBAL_CHANNEL": self.DEFAULT_GLOBAL_CHANNEL,
             "GLOBAL_MESSAGE_TYPE": self.DEFAULT_GLOBAL_MESSAGE_TYPE,
             "GLOBAL_CC_BANK": self.DEFAULT_GLOBAL_CC_BANK,
-            "CC_BANKS_1": self.DEFAULT_CC_BANKS_1,
-            "CC_BANKS_2": self.DEFAULT_CC_BANKS_2,
-            "CC_BANKS_3": self.DEFAULT_CC_BANKS_3,
-            "CC_BANKS_4": self.DEFAULT_CC_BANKS_4,
-            "CC_BANKS_1_CHANNEL": None,
-            "CC_BANKS_2_CHANNEL": None,
-            "CC_BANKS_3_CHANNEL": None,
-            "CC_BANKS_4_CHANNEL": None,
-            "CC_BANKS_1_ROW_CHANNELS": None,
-            "CC_BANKS_2_ROW_CHANNELS": None,
-            "CC_BANKS_3_ROW_CHANNELS": None,
-            "CC_BANKS_4_ROW_CHANNELS": None,
-            "CC_BANKS_1_TYPE": None,
-            "CC_BANKS_2_TYPE": None,
-            "CC_BANKS_3_TYPE": None,
-            "CC_BANKS_4_TYPE": None,
-            "CC_BANKS_1_ROW_TYPES": None,
-            "CC_BANKS_2_ROW_TYPES": None,
-            "CC_BANKS_3_ROW_TYPES": None,
-            "CC_BANKS_4_ROW_TYPES": None,
+            "PAGE_1_BANKS": self.DEFAULT_PAGE_1_BANKS,
+            "PAGE_2_BANKS": self.DEFAULT_PAGE_2_BANKS,
+            "PAGE_3_BANKS": self.DEFAULT_PAGE_3_BANKS,
+            "PAGE_4_BANKS": self.DEFAULT_PAGE_4_BANKS,
+            "PAGE_1_CHANNEL": None,
+            "PAGE_2_CHANNEL": None,
+            "PAGE_3_CHANNEL": None,
+            "PAGE_4_CHANNEL": None,
+            "PAGE_1_BANK_CHANNELS": None,
+            "PAGE_2_BANK_CHANNELS": None,
+            "PAGE_3_BANK_CHANNELS": None,
+            "PAGE_4_BANK_CHANNELS": None,
+            "PAGE_1_TYPE": None,
+            "PAGE_2_TYPE": None,
+            "PAGE_3_TYPE": None,
+            "PAGE_4_TYPE": None,
+            "PAGE_1_BANK_TYPES": None,
+            "PAGE_2_BANK_TYPES": None,
+            "PAGE_3_BANK_TYPES": None,
+            "PAGE_4_BANK_TYPES": None,
         }
     
     def _is_empty_or_null(self, val):
@@ -203,29 +203,29 @@ class Settings:
         """Get the global CC bank settings."""
         return self.settings["GLOBAL_CC_BANK"]
     
-    def get_cc_banks_1(self):
-        """Get the CC banks 1 settings."""
-        return self.settings["CC_BANKS_1"]
+    def get_page_1_banks(self):
+        """Get the page 1 banks settings."""
+        return self.settings["PAGE_1_BANKS"]
     
-    def get_cc_banks_2(self):
-        """Get the CC banks 2 settings."""
-        return self.settings["CC_BANKS_2"]
+    def get_page_2_banks(self):
+        """Get the page 2 banks settings."""
+        return self.settings["PAGE_2_BANKS"]
     
-    def get_cc_banks_3(self):
-        """Get the CC banks 3 settings."""
-        return self.settings["CC_BANKS_3"]
+    def get_page_3_banks(self):
+        """Get the page 3 banks settings."""
+        return self.settings["PAGE_3_BANKS"]
     
-    def get_cc_banks_4(self):
-        """Get the CC banks 4 settings."""
-        return self.settings["CC_BANKS_4"]
+    def get_page_4_banks(self):
+        """Get the page 4 banks settings."""
+        return self.settings["PAGE_4_BANKS"]
     
-    def get_all_cc_bank_groups(self):
-        """Get all CC bank groups as a list."""
+    def get_all_pages(self):
+        """Get all pages as a list (each page contains 4 banks)."""
         return [
-            self.settings["CC_BANKS_1"],
-            self.settings["CC_BANKS_2"],
-            self.settings["CC_BANKS_3"],
-            self.settings["CC_BANKS_4"]
+            self.settings["PAGE_1_BANKS"],
+            self.settings["PAGE_2_BANKS"],
+            self.settings["PAGE_3_BANKS"],
+            self.settings["PAGE_4_BANKS"]
         ]
     
     def _is_valid_single_channel(self, val):
@@ -250,7 +250,7 @@ class Settings:
     def _is_valid_channel_value(self, val):
         """
         Check if a value is a valid channel specification.
-        Accepts: int (1-16), "GLOBAL", "BANK", "", null, or multi-channel string "1|2|3".
+        Accepts: int (1-16), "GLOBAL", "PAGE", "", null, or multi-channel string "1|2|3".
         
         Args:
             val: The value to check
@@ -261,7 +261,7 @@ class Settings:
         # Empty/null means inherit
         if self._is_empty_or_null(val):
             return True
-        if val in ("GLOBAL", "BANK"):
+        if val in ("GLOBAL", "PAGE"):
             return True
         if self._is_valid_single_channel(val):
             return True
@@ -325,49 +325,49 @@ class Settings:
         """
         return self._is_valid_channel_value(val)
     
-    def _validate_row_channels(self, row_channels):
+    def _validate_bank_channels(self, bank_channels):
         """
-        Validate a row channels array (4 channel values).
+        Validate a bank channels array (4 channel values).
         Accepts null/empty for entire array or individual elements.
         
         Args:
-            row_channels: The array to validate (can be None, empty, or list)
+            bank_channels: The array to validate (can be None, empty, or list)
             
         Returns:
             bool: True if valid, False otherwise
         """
-        # Null or empty array means inherit from bank
-        if self._is_empty_or_null(row_channels):
+        # Null or empty array means inherit from page
+        if self._is_empty_or_null(bank_channels):
             return True
-        if not isinstance(row_channels, list) or len(row_channels) != 4:
+        if not isinstance(bank_channels, list) or len(bank_channels) != 4:
             return False
-        return all(self._validate_channel_value(ch) for ch in row_channels)
+        return all(self._validate_channel_value(ch) for ch in bank_channels)
     
-    def _get_bank_channels(self, bank_group_idx):
+    def _get_page_channels(self, page_idx):
         """
-        Get the resolved MIDI channels for a bank (not a specific row).
-        Falls back to global if bank channel is empty/null/GLOBAL/BANK.
+        Get the resolved MIDI channels for a page (not a specific bank).
+        Falls back to global if page channel is empty/null/GLOBAL/PAGE.
         
         Args:
-            bank_group_idx (int): Bank group index (0-3)
+            page_idx (int): Page index (0-3)
             
         Returns:
             list: List of 0-indexed MIDI channels
         """
-        bank_num = bank_group_idx + 1
-        bank_channel_key = f"CC_BANKS_{bank_num}_CHANNEL"
-        bank_ch = self.settings.get(bank_channel_key)
+        page_num = page_idx + 1
+        page_channel_key = f"PAGE_{page_num}_CHANNEL"
+        page_ch = self.settings.get(page_channel_key)
         
-        # Empty/null/GLOBAL/BANK at bank level all fall through to global
-        if self._is_empty_or_null(bank_ch) or bank_ch in ("GLOBAL", "BANK"):
+        # Empty/null/GLOBAL/PAGE at page level all fall through to global
+        if self._is_empty_or_null(page_ch) or page_ch in ("GLOBAL", "PAGE"):
             return self.get_global_channels()
         
-        parsed = self._parse_channels(bank_ch)
+        parsed = self._parse_channels(page_ch)
         if parsed is not None:
             return parsed
         
         # Invalid value, fall back to global
-        print(f"Invalid {bank_channel_key}: {bank_ch}. Falling back to global.")
+        print(f"Invalid {page_channel_key}: {page_ch}. Falling back to global.")
         return self.get_global_channels()
     
     def get_global_channels(self):
@@ -386,57 +386,57 @@ class Settings:
         print(f"Invalid GLOBAL_CHANNEL: {ch}. Falling back to channel 1.")
         return [0]  # Default to channel 1 (0-indexed)
     
-    def get_resolved_channels(self, bank_group_idx, row_idx):
+    def get_resolved_channels(self, page_idx, bank_idx):
         """
-        Get the resolved MIDI channels for a specific bank group and row.
+        Get the resolved MIDI channels for a specific page and bank.
         
         Hierarchy (first valid value wins):
-        - Row Channel → if set to specific channel(s)
-        - Bank Channel → if row is empty/null/"BANK", or row says "GLOBAL" and bank has specific channel
+        - Bank Channel → if set to specific channel(s)
+        - Page Channel → if bank is empty/null/"PAGE", or bank says "GLOBAL" and page has specific channel
         - Global Channel → ultimate fallback
         
         Keywords:
-        - "" or null: Inherit from parent (row→bank, bank→global)
+        - "" or null: Inherit from parent (bank→page, page→global)
         - "GLOBAL": Use global channel directly
-        - "BANK": Use bank channel (only valid for row channels)
+        - "PAGE": Use page channel (only valid for bank channels)
         
         Supports multi-channel format "1|2|3" at any level.
         
         Args:
-            bank_group_idx (int): Bank group index (0-3)
-            row_idx (int): Row index within the bank (0-3)
+            page_idx (int): Page index (0-3)
+            bank_idx (int): Bank index within the page (0-3)
             
         Returns:
             list: List of 0-indexed MIDI channels
         """
-        bank_num = bank_group_idx + 1  # Convert to 1-indexed for settings keys
+        page_num = page_idx + 1  # Convert to 1-indexed for settings keys
         
-        # 1. Check row-level override
-        row_channels_key = f"CC_BANKS_{bank_num}_ROW_CHANNELS"
-        row_channels = self.settings.get(row_channels_key)
+        # 1. Check bank-level override
+        bank_channels_key = f"PAGE_{page_num}_BANK_CHANNELS"
+        bank_channels = self.settings.get(bank_channels_key)
         
-        # If row_channels array exists and has this index
-        if isinstance(row_channels, list) and len(row_channels) > row_idx:
-            row_ch = row_channels[row_idx]
+        # If bank_channels array exists and has this index
+        if isinstance(bank_channels, list) and len(bank_channels) > bank_idx:
+            bank_ch = bank_channels[bank_idx]
             
-            # Empty/null or "BANK" → use bank channel
-            if self._is_empty_or_null(row_ch) or row_ch == "BANK":
-                return self._get_bank_channels(bank_group_idx)
+            # Empty/null or "PAGE" → use page channel
+            if self._is_empty_or_null(bank_ch) or bank_ch == "PAGE":
+                return self._get_page_channels(page_idx)
             
-            # "GLOBAL" → skip bank, go directly to global
-            if row_ch == "GLOBAL":
+            # "GLOBAL" → skip page, go directly to global
+            if bank_ch == "GLOBAL":
                 return self.get_global_channels()
             
             # Try to parse as channel number(s)
-            parsed = self._parse_channels(row_ch)
+            parsed = self._parse_channels(bank_ch)
             if parsed is not None:
                 return parsed
             
-            # Invalid value, fall through to bank
-            print(f"Invalid row channel [{row_idx}] in {row_channels_key}: {row_ch}. Using bank channel.")
+            # Invalid value, fall through to page
+            print(f"Invalid bank channel [{bank_idx}] in {bank_channels_key}: {bank_ch}. Using page channel.")
         
-        # 2. Row channels array is null/empty or missing this index → use bank channel
-        return self._get_bank_channels(bank_group_idx)
+        # 2. Bank channels array is null/empty or missing this index → use page channel
+        return self._get_page_channels(page_idx)
     
     # ==================== Message Type Methods ====================
     
@@ -455,22 +455,22 @@ class Settings:
             return True
         return val in self.VALID_MESSAGE_TYPES
     
-    def _validate_row_types(self, row_types):
+    def _validate_bank_types(self, bank_types):
         """
-        Validate a row types array (4 type values).
+        Validate a bank types array (4 type values).
         Accepts null/empty for entire array or individual elements.
         
         Args:
-            row_types: The array to validate (can be None, empty, or list)
+            bank_types: The array to validate (can be None, empty, or list)
             
         Returns:
             bool: True if valid, False otherwise
         """
-        if self._is_empty_or_null(row_types):
+        if self._is_empty_or_null(bank_types):
             return True
-        if not isinstance(row_types, list) or len(row_types) != 4:
+        if not isinstance(bank_types, list) or len(bank_types) != 4:
             return False
-        return all(self._is_valid_message_type(t) for t in row_types)
+        return all(self._is_valid_message_type(t) for t in bank_types)
     
     def get_global_message_type(self):
         """
@@ -486,71 +486,71 @@ class Settings:
         print(f"Invalid GLOBAL_MESSAGE_TYPE: {msg_type}. Falling back to CC.")
         return "CC"
     
-    def _get_bank_message_type(self, bank_group_idx):
+    def _get_page_message_type(self, page_idx):
         """
-        Get the resolved message type for a bank (not a specific row).
-        Falls back to global if bank type is empty/null.
+        Get the resolved message type for a page (not a specific bank).
+        Falls back to global if page type is empty/null.
         
         Args:
-            bank_group_idx (int): Bank group index (0-3)
+            page_idx (int): Page index (0-3)
             
         Returns:
             str: "CC" or "AT"
         """
-        bank_num = bank_group_idx + 1
-        bank_type_key = f"CC_BANKS_{bank_num}_TYPE"
-        bank_type = self.settings.get(bank_type_key)
+        page_num = page_idx + 1
+        page_type_key = f"PAGE_{page_num}_TYPE"
+        page_type = self.settings.get(page_type_key)
         
-        # Empty/null at bank level falls through to global
-        if self._is_empty_or_null(bank_type):
+        # Empty/null at page level falls through to global
+        if self._is_empty_or_null(page_type):
             return self.get_global_message_type()
         
-        if bank_type in self.VALID_MESSAGE_TYPES:
-            return bank_type
+        if page_type in self.VALID_MESSAGE_TYPES:
+            return page_type
         
         # Invalid value, fall back to global
-        print(f"Invalid {bank_type_key}: {bank_type}. Falling back to global.")
+        print(f"Invalid {page_type_key}: {page_type}. Falling back to global.")
         return self.get_global_message_type()
     
-    def get_resolved_message_type(self, bank_group_idx, row_idx):
+    def get_resolved_message_type(self, page_idx, bank_idx):
         """
-        Get the resolved message type for a specific bank group and row.
+        Get the resolved message type for a specific page and bank.
         
         Hierarchy (first valid value wins):
-        - Row Type → if set to "CC" or "AT"
-        - Bank Type → if row is empty/null
+        - Bank Type → if set to "CC" or "AT"
+        - Page Type → if bank is empty/null
         - Global Type → ultimate fallback
         
         Args:
-            bank_group_idx (int): Bank group index (0-3)
-            row_idx (int): Row index within the bank (0-3)
+            page_idx (int): Page index (0-3)
+            bank_idx (int): Bank index within the page (0-3)
             
         Returns:
             str: "CC" or "AT"
         """
-        bank_num = bank_group_idx + 1
+        page_num = page_idx + 1
         
-        # 1. Check row-level override
-        row_types_key = f"CC_BANKS_{bank_num}_ROW_TYPES"
-        row_types = self.settings.get(row_types_key)
+        # 1. Check bank-level override
+        bank_types_key = f"PAGE_{page_num}_BANK_TYPES"
+        bank_types = self.settings.get(bank_types_key)
         
-        # If row_types array exists and has this index
-        if isinstance(row_types, list) and len(row_types) > row_idx:
-            row_type = row_types[row_idx]
+        # If bank_types array exists and has this index
+        if isinstance(bank_types, list) and len(bank_types) > bank_idx:
+            bank_type = bank_types[bank_idx]
             
-            # Empty/null → use bank type
-            if self._is_empty_or_null(row_type):
-                return self._get_bank_message_type(bank_group_idx)
+            # Empty/null → use page type
+            if self._is_empty_or_null(bank_type):
+                return self._get_page_message_type(page_idx)
             
             # Valid type
-            if row_type in self.VALID_MESSAGE_TYPES:
-                return row_type
+            if bank_type in self.VALID_MESSAGE_TYPES:
+                return bank_type
             
-            # Invalid value, fall through to bank
-            print(f"Invalid row type [{row_idx}] in {row_types_key}: {row_type}. Using bank type.")
+            # Invalid value, fall through to page
+            print(f"Invalid bank type [{bank_idx}] in {bank_types_key}: {bank_type}. Using page type.")
         
-        # 2. Row types array is null/empty or missing this index → use bank type
-        return self._get_bank_message_type(bank_group_idx)
+        # 2. Bank types array is null/empty or missing this index → use page type
+        return self._get_page_message_type(page_idx)
 
 # Create a singleton instance
 settings = Settings()

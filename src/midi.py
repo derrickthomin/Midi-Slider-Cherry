@@ -24,7 +24,7 @@ class MidiManager:
         self.last_aftertouch_values_sent = {}
         
         # Track last aftertouch values per slider for LED/pickup purposes
-        # Key: (slider_idx, bank_group_idx, row_idx), Value: pressure value
+        # Key: (slider_idx, page_idx, bank_idx), Value: pressure value
         # This allows independent pickup behavior even though AT is per-channel
         self.last_at_values_per_slider = {}
 
@@ -36,7 +36,13 @@ class MidiManager:
             timeout=0.001
         )
         # Note: out_channel here is just a default; we override per-message
-        self.midi = adafruit_midi.MIDI(midi_out=usb_midi.ports[1], out_channel=0)
+        # USB MIDI: ports[0] is input, ports[1] is output
+        self.midi = adafruit_midi.MIDI(
+            midi_in=usb_midi.ports[0],
+            midi_out=usb_midi.ports[1],
+            in_channel=0,
+            out_channel=0
+        )
         self.trs_midi = adafruit_midi.MIDI(
             midi_in=uart,
             midi_out=uart,
@@ -44,6 +50,65 @@ class MidiManager:
             out_channel=0,
             debug=False,
         )
+
+    def receive_cc(self):
+        """
+        Check for incoming CC messages from both USB and TRS MIDI.
+        
+        Returns:
+            tuple: (cc_number, channel) if CC received, None otherwise.
+            Channel is 1-indexed (1-16) for user display.
+        """
+        # Check USB MIDI
+        msg = self.midi.receive()
+        if msg is not None and isinstance(msg, ControlChange):
+            return (msg.control, msg.channel + 1)  # Return 1-indexed channel
+        
+        # Check TRS MIDI
+        msg = self.trs_midi.receive()
+        if msg is not None and isinstance(msg, ControlChange):
+            return (msg.control, msg.channel + 1)  # Return 1-indexed channel
+        
+        return None
+
+    def receive_cc_or_at(self):
+        """
+        Check for incoming CC or Channel Aftertouch messages from both USB and TRS MIDI.
+        
+        Returns:
+            tuple: ("CC", cc_number, channel) or ("AT", value, channel) if received, None otherwise.
+            Channel is 1-indexed (1-16) for user display.
+        """
+        # Check USB MIDI
+        msg = self.midi.receive()
+        if msg is not None:
+            if isinstance(msg, ControlChange):
+                return ("CC", msg.control, msg.channel + 1)
+            if isinstance(msg, ChannelPressure):
+                return ("AT", msg.pressure, msg.channel + 1)
+        
+        # Check TRS MIDI
+        msg = self.trs_midi.receive()
+        if msg is not None:
+            if isinstance(msg, ControlChange):
+                return ("CC", msg.control, msg.channel + 1)
+            if isinstance(msg, ChannelPressure):
+                return ("AT", msg.pressure, msg.channel + 1)
+        
+        return None
+    
+    def flush_receive_buffer(self):
+        """
+        Drain any pending messages from both USB and TRS MIDI input buffers.
+        Call this before starting learn mode to avoid reading stale messages.
+        """
+        # Drain USB MIDI buffer
+        while self.midi.receive() is not None:
+            pass
+        
+        # Drain TRS MIDI buffer    
+        while self.trs_midi.receive() is not None:
+            pass
 
     def has_cc_value_changed(self, cc_number, channel, cc_value):
         """
@@ -110,7 +175,7 @@ class MidiManager:
         """
         return self.last_aftertouch_values_sent.get(channel, -1) != pressure
     
-    def send_aftertouch(self, channels, pressure, slider_idx=0, bank_group_idx=0, row_idx=0):
+    def send_aftertouch(self, channels, pressure, slider_idx=0, page_idx=0, bank_idx=0):
         """
         Sends Channel Aftertouch (Channel Pressure) messages for all given channels,
         but only if their values changed.
@@ -123,11 +188,11 @@ class MidiManager:
             channels: List of channels (0-indexed) to send to
             pressure (int): The pressure value to send (0-127)
             slider_idx (int): Index of the slider (0-3) for per-slider tracking
-            bank_group_idx (int): Bank group index (0-3) for per-slider tracking
-            row_idx (int): Row index (0-3) for per-slider tracking
+            page_idx (int): Page index (0-3) for per-slider tracking
+            bank_idx (int): Bank index (0-3) for per-slider tracking
         """
         # Track per-slider for LED/pickup purposes
-        slider_key = (slider_idx, bank_group_idx, row_idx)
+        slider_key = (slider_idx, page_idx, bank_idx)
         self.last_at_values_per_slider[slider_key] = pressure
         
         for channel in channels:
@@ -149,20 +214,20 @@ class MidiManager:
         """
         return self.last_aftertouch_values_sent.get(channel, 16)
     
-    def get_last_at_value_per_slider(self, slider_idx, bank_group_idx, row_idx):
+    def get_last_at_value_per_slider(self, slider_idx, page_idx, bank_idx):
         """
-        Retrieves the last aftertouch value sent for a specific slider/bank/row combo.
+        Retrieves the last aftertouch value sent for a specific slider/page/bank combo.
         Used for LED display and pickup mode behavior.
 
         Args:
             slider_idx (int): Slider index (0-3)
-            bank_group_idx (int): Bank group index (0-3)
-            row_idx (int): Row index within the bank (0-3), or -1 for global
+            page_idx (int): Page index (0-3)
+            bank_idx (int): Bank index within the page (0-3), or -1 for global
 
         Returns:
-            int: The last AT value sent for that slider/bank/row, or 16 if never sent.
+            int: The last AT value sent for that slider/page/bank, or 16 if never sent.
         """
-        key = (slider_idx, bank_group_idx, row_idx)
+        key = (slider_idx, page_idx, bank_idx)
         return self.last_at_values_per_slider.get(key, 16)
 
 # Instantiate the global MidiManager
