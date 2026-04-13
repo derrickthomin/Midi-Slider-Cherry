@@ -64,16 +64,16 @@ class LightsManager:
         """
         self.pixels.fill((0, 0, 0))
 
-    def update_slider_lights(self, sliders, bank_idx=0, bank_group_idx=0, held_button_order=None, bank_group_just_changed=False):
+    def update_slider_lights(self, sliders, bank_idx=0, page_idx=0, held_button_order=None, page_just_changed=False):
         """
         Updates the LEDs to reflect the current positions of the sliders.
 
         Args:
             sliders (list): A list of slider objects or their CC values (0-127).
             bank_idx (int): The current bank index (-1 for global).
-            bank_group_idx (int): The current bank group index.
+            page_idx (int): The current page index.
             held_button_order (list): List of button indices in press order (for multi-bank morphing).
-            bank_group_just_changed (bool): Whether bank group was just changed (disables morphing).
+            page_just_changed (bool): Whether page was just changed (disables morphing).
         """
         if held_button_order is None:
             held_button_order = []
@@ -83,12 +83,12 @@ class LightsManager:
             channel = settings.get_global_channels()[0]
             message_type = settings.get_global_message_type()
         else:
-            channel = settings.get_resolved_channels(bank_group_idx, bank_idx)[0]
-            message_type = settings.get_resolved_message_type(bank_group_idx, bank_idx)
+            channel = settings.get_resolved_channels(page_idx, bank_idx)[0]
+            message_type = settings.get_resolved_message_type(page_idx, bank_idx)
         
         # Check for multi-bank mode and handle morphing
-        # Disable morphing during bank group navigation to avoid false triggers
-        is_multi_bank = len(held_button_order) > 1 and not bank_group_just_changed
+        # Disable morphing during page navigation to avoid false triggers
+        is_multi_bank = len(held_button_order) > 1 and not page_just_changed
         
         # Reset morph timer when entering multi-bank mode
         if is_multi_bank and not self.was_multi_bank:
@@ -97,7 +97,7 @@ class LightsManager:
         self.was_multi_bank = is_multi_bank
         
         # Get color (morphed if multi-bank, solid otherwise)
-        morphed_color = self._get_morphed_color(held_button_order, bank_group_idx) if is_multi_bank else None
+        morphed_color = self._get_morphed_color(held_button_order, page_idx) if is_multi_bank else None
         
         for slider_idx, slider in enumerate(sliders):
             # Obtain the CC value (0-127)
@@ -105,7 +105,7 @@ class LightsManager:
 
             # Get last sent value based on message type (per-slider for AT)
             if message_type == "AT":
-                last_sent_cc_value = midi_manager.get_last_at_value_per_slider(slider_idx, bank_group_idx, bank_idx)
+                last_sent_cc_value = midi_manager.get_last_at_value_per_slider(slider_idx, page_idx, bank_idx)
             else:
                 last_sent_cc_value = midi_manager.get_last_cc_value_sent(slider.current_assigned_cc_number, channel)
             
@@ -124,19 +124,19 @@ class LightsManager:
             elif bank_idx == -1:
                 color = cfg.GLOBAL_BANK_COLOR
             else:
-                color = cfg.BANK_GROUPS_COLORS[bank_group_idx][bank_idx]
+                color = cfg.PAGE_COLORS[page_idx][bank_idx]
 
             # Light up pixels according to the CC value
             for i, pix_idx in enumerate(pixel_indices):
                 self.pixels[pix_idx] = color if i < lit_pixels else (0, 0, 0)
 
-    def _get_morphed_color(self, held_button_order, bank_group_idx):
+    def _get_morphed_color(self, held_button_order, page_idx):
         """
         Returns an interpolated color when multiple buttons are held.
         
         Args:
             held_button_order (list): Button indices in press order.
-            bank_group_idx (int): Current bank group index.
+            page_idx (int): Current page index.
             
         Returns:
             tuple: RGB color tuple, or None if not in multi-bank mode.
@@ -145,7 +145,7 @@ class LightsManager:
             return None
         
         # Get all active colors in press order
-        colors = [cfg.BANK_GROUPS_COLORS[bank_group_idx][idx] for idx in held_button_order]
+        colors = [cfg.PAGE_COLORS[page_idx][idx] for idx in held_button_order]
         num_colors = len(colors)
         
         # Calculate where we are in the cycle (time-based)
@@ -167,17 +167,17 @@ class LightsManager:
             int(color1[2] + (color2[2] - color1[2]) * segment_progress),
         )
 
-    def update_buttons(self, buttons, bank_group_idx, locked_bank_idx, bank_group_just_changed=False, bank_change_feedback=None):
+    def update_buttons(self, buttons, page_idx, locked_bank_idx, page_just_changed=False, page_change_feedback=None):
         """
         Turns button LEDs on or off based on the button state.
 
         Args:
             buttons (list): List of button objects.
-            bank_group_idx (int): Index of the current bank group.
+            page_idx (int): Index of the current page.
             locked_bank_idx (int): Index of the locked bank (-1 if none).
-            bank_group_just_changed (bool): Whether bank group was just changed (show indicator while navigating).
-            bank_change_feedback (dict): Optional feedback state with:
-                - 'bank_change_mode': If True, hide all button colors (only show bank indicator)
+            page_just_changed (bool): Whether page was just changed (show indicator while navigating).
+            page_change_feedback (dict): Optional feedback state with:
+                - 'page_change_mode': If True, hide all button colors (only show page indicator)
                 - 'blink_button_idx': Button to blink when at limit
                 - 'blink_off': Whether we're in the "off" phase of the blink
         """
@@ -185,12 +185,12 @@ class LightsManager:
             # If a bank is locked, its lighting is handled separately
             return
         
-        if bank_change_feedback is None:
-            bank_change_feedback = {'bank_change_mode': False, 'blink_button_idx': -1, 'blink_off': False}
+        if page_change_feedback is None:
+            page_change_feedback = {'page_change_mode': False, 'blink_button_idx': -1, 'blink_off': False}
         
-        bank_change_mode = bank_change_feedback.get('bank_change_mode', False)
-        blink_idx = bank_change_feedback.get('blink_button_idx', -1)
-        blink_off = bank_change_feedback.get('blink_off', False)
+        page_change_mode = page_change_feedback.get('page_change_mode', False)
+        blink_idx = page_change_feedback.get('blink_button_idx', -1)
+        blink_off = page_change_feedback.get('blink_off', False)
         
         any_button_pressed = False
         pressed_button_indices = set()
@@ -198,43 +198,43 @@ class LightsManager:
         for idx, button in enumerate(buttons):
             pixel_index = self.button_pixel_indices.get(idx)
             if button.pressed:
-                # In bank change mode, hide all button colors
-                if bank_change_mode:
+                # In page change mode, hide all button colors
+                if page_change_mode:
                     self.pixels[pixel_index] = (0, 0, 0)
                 else:
-                    self.pixels[pixel_index] = cfg.BANK_GROUPS_COLORS[bank_group_idx][idx]
+                    self.pixels[pixel_index] = cfg.PAGE_COLORS[page_idx][idx]
                 any_button_pressed = True
                 pressed_button_indices.add(idx)
             else:
                 self.pixels[pixel_index] = (0, 0, 0)
 
-        # Show bank group indicator if:
+        # Show page indicator if:
         # - No buttons are pressed, OR
-        # - Bank group was just changed (navigating between bank groups)
-        # In bank change mode, always show indicator (button colors are hidden)
-        if not any_button_pressed or bank_group_just_changed or bank_change_mode:
-            indicator_idx = bank_group_idx
-            # In bank change mode, always show the indicator regardless of which buttons pressed
-            show_indicator = bank_change_mode or indicator_idx not in pressed_button_indices
+        # - Page was just changed (navigating between pages)
+        # In page change mode, always show indicator (button colors are hidden)
+        if not any_button_pressed or page_just_changed or page_change_mode:
+            indicator_idx = page_idx
+            # In page change mode, always show the indicator regardless of which buttons pressed
+            show_indicator = page_change_mode or indicator_idx not in pressed_button_indices
             
             if show_indicator:
-                # Check if we should blink this pixel (at bank limit)
+                # Check if we should blink this pixel (at page limit)
                 if indicator_idx == blink_idx and blink_off:
                     self.pixels[indicator_idx] = (0, 0, 0)
                 else:
-                    self.pixels[indicator_idx] = cfg.BANK_GROUP_INDICATOR_COLOR
+                    self.pixels[indicator_idx] = cfg.PAGE_INDICATOR_COLOR
 
-    def indicate_locked_bank(self, bank_group_idx, locked_bank_idx):
+    def indicate_locked_bank(self, page_idx, locked_bank_idx):
         """
         Lights the button LED for the locked bank.
 
         Args:
-            bank_group_idx (int): The current bank group index.
+            page_idx (int): The current page index.
             locked_bank_idx (int): The locked bank index.
         """
         for idx, pix_idx in self.button_pixel_indices.items():
             if idx == locked_bank_idx:
-                self.pixels[pix_idx] = cfg.BANK_GROUPS_COLORS[bank_group_idx][locked_bank_idx]
+                self.pixels[pix_idx] = cfg.PAGE_COLORS[page_idx][locked_bank_idx]
             else:
                 self.pixels[pix_idx] = (0, 0, 0)
 

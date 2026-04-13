@@ -31,15 +31,15 @@ ADAPTIVE_RAW_TO_CC_DIVISOR = 512  # 65536 / 128 = 512 (ADC range / CC range)
 MIN_CC_VALUE = 0
 MAX_CC_VALUE = 127
 
-# Global CC Bank and CC Banks from settings
+# Global CC Bank and Pages from settings
 GLOBAL_CC_BANK = settings.get_global_cc_bank()
-CC_BANK_GROUPS = settings.get_all_cc_bank_groups()
+PAGES = settings.get_all_pages()
 
 # Colors
 GLOBAL_BANK_COLOR = (200, 155, 55)  # A separate color for the global bank
 JUMP_MODE_COLOR = (255, 165, 0)     # Orange for jump mode
 REG_MODE_COLOR = (0, 255, 0)        # Green for regular mode
-BANK_GROUP_INDICATOR_COLOR = (255, 255, 255)  # White for bank group indicator
+PAGE_INDICATOR_COLOR = (255, 255, 255)  # White for page indicator
 
 COLORS = {
     "WHITE": (255, 255, 255),
@@ -60,7 +60,7 @@ COLORS = {
     "FUCHSIA": (255, 0, 255),
     "TOMATO": (255, 85, 65),
 }
-BANK_GROUPS_COLORS = [
+PAGE_COLORS = [
     [COLORS["RED"], COLORS["GREEN"], COLORS["BLUE"], COLORS["YELLOW"]],
     [COLORS["CYAN"], COLORS["MAGENTA"], COLORS["ORANGE"], COLORS["LIME"]],
     [COLORS["TEAL"], COLORS["NAVY"], COLORS["BROWN"], COLORS["GOLD"]],

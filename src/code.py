@@ -1,3 +1,5 @@
+# Version 1.20 - 2024-06-01
+
 import time
 import board
 import digitalio
@@ -6,6 +8,8 @@ import microcontroller
 
 from controller import MidiController
 from lights import LightsManager
+from midi import midi_manager
+from serial_config import serial_config
 
 # Slider inputs
 slider_pins = [
@@ -32,30 +36,35 @@ midi_controller = MidiController(slider_pins, button_pins)
 lights_manager = LightsManager()
 lights_manager.startup_animation()
 
+# Initialize serial config handler
+serial_config.set_controller(midi_controller)
+serial_config.set_midi_manager(midi_manager)
+
 print(f"clock freq: {microcontroller.cpu.frequency}")
 
 # Main loop
 while True:
     midi_controller.update_inputs()
     midi_controller.process_inputs()
+    serial_config.update()
 
     bank_idx = midi_controller.current_bank_idx
-    bank_group_idx = midi_controller.current_bank_group_idx
+    page_idx = midi_controller.current_page_idx
     locked_bank_idx = midi_controller.locked_bank_idx
     jump_mode_enabled = midi_controller.jump_mode_enabled
     sliders = midi_controller.sliders
     buttons = midi_controller.buttons
     held_button_order = midi_controller.held_button_order
-    bank_group_just_changed = midi_controller.bank_group_just_changed
-    bank_change_feedback = midi_controller.update_bank_change_feedback()
+    page_just_changed = midi_controller.page_just_changed
+    page_change_feedback = midi_controller.update_page_change_feedback()
 
     # Update slider lights
-    lights_manager.update_slider_lights(sliders, bank_idx, bank_group_idx, held_button_order, bank_group_just_changed)
+    lights_manager.update_slider_lights(sliders, bank_idx, page_idx, held_button_order, page_just_changed)
 
     if locked_bank_idx != -1:
-        lights_manager.indicate_locked_bank(bank_group_idx, locked_bank_idx)
+        lights_manager.indicate_locked_bank(page_idx, locked_bank_idx)
     else:
-        lights_manager.update_buttons(buttons, bank_group_idx, locked_bank_idx, bank_group_just_changed, bank_change_feedback)
+        lights_manager.update_buttons(buttons, page_idx, locked_bank_idx, page_just_changed, page_change_feedback)
 
     lights_manager.indicate_jump_mode(jump_mode_enabled)
     lights_manager.show_pixels()

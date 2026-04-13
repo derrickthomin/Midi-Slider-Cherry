@@ -25,7 +25,7 @@ class MidiController:
 
         # Tracking
         self.is_muted = False
-        self.current_bank_group_idx = 0
+        self.current_page_idx = 0
         self.current_bank_idx = 0  # determined by if any buttons are held. -1 is global.
         self.held_button_order = []  # Tracks button press order; first is primary, rest are additional
         self.primary_bank_idx = -1  # Derived from held_button_order[0], -1 = global
@@ -34,19 +34,22 @@ class MidiController:
         self.locked_bank_idx = -1
         self.jump_mode_enabled = False
         self.unlock_pending = False
-        self.bank_group_just_changed = False  # For showing indicator during navigation
+        self.page_just_changed = False  # For showing indicator during navigation
         
         # Double-press filter: ignore double-press on same button that was just unlocked
         self._last_unlocked_bank_idx = -1
         self._last_unlock_time = 0
 
-        # Bank change mode state
-        self.bank_change_mode_active = False  # True when in bank change mode (hide all button colors)
-        self.bank_change_exit_button_idx = -1  # Button that must be released to exit bank change mode
-        self.bank_limit_blink_idx = -1  # Button pixel to blink when at min/max
-        self.bank_limit_blink_time = 0  # When the blink started
-        self.bank_limit_blink_duration = 0.12  # Total on-off-on cycle duration (fast)
-        self.bank_limit_blink_locked = False  # If True, blink cycle is running and won't reset
+        # Page change mode state
+        self.page_change_mode_active = False  # True when in page change mode (hide all button colors)
+        self.page_change_exit_button_idx = -1  # Button that must be released to exit page change mode
+        self.page_limit_blink_idx = -1  # Button pixel to blink when at min/max
+        self.page_limit_blink_time = 0  # When the blink started
+        self.page_limit_blink_duration = 0.12  # Total on-off-on cycle duration (fast)
+        self.page_limit_blink_locked = False  # If True, blink cycle is running and won't reset
+        
+        # Config mode: single click locks banks (for web config interface)
+        self.config_mode = False
 
         # Setup
         self.setup_sliders()
@@ -111,35 +114,35 @@ class MidiController:
         only_bottom_held = bottom_button.pressed and not any(b.pressed for b in [top_button, middle_button_T, middle_button_B])
         only_top_held = top_button.pressed and not any(b.pressed for b in [bottom_button, middle_button_T, middle_button_B])
 
-        # Bank group switching logic:
+        # Page switching logic:
         # - First switch uses release (to distinguish from multi-bank hold intent)
-        # - Once in bank change mode, use click for faster switching
-        # - Only allow ENTERING bank change mode if ONLY the initiating button is held
-        # - While IN bank change mode, no restrictions (works as before)
+        # - Once in page change mode, use click for faster switching
+        # - Only allow ENTERING page change mode if ONLY the initiating button is held
+        # - While IN page change mode, no restrictions (works as before)
         
-        # Switch to next bank group (bottom held, top activated)
+        # Switch to next page (bottom held, top activated)
         if bottom_hold_time > 0:
-            if self.bank_change_mode_active and top_new_press:
-                # Already in bank change mode - switch on click for rapid switching (no restrictions)
-                self.next_bank_group()
+            if self.page_change_mode_active and top_new_press:
+                # Already in page change mode - switch on click for rapid switching (no restrictions)
+                self.next_page()
                 self.unlock_bank()
                 return
-            elif not self.bank_change_mode_active and top_new_release and not top_was_long_held and only_bottom_held:
-                # Entering bank change mode - only allow if ONLY bottom is held
-                self.next_bank_group()
+            elif not self.page_change_mode_active and top_new_release and not top_was_long_held and only_bottom_held:
+                # Entering page change mode - only allow if ONLY bottom is held
+                self.next_page()
                 self.unlock_bank()
                 return
 
-        # Switch to previous bank group (top held, bottom activated)
+        # Switch to previous page (top held, bottom activated)
         if top_hold_time > 0:
-            if self.bank_change_mode_active and bottom_new_press:
-                # Already in bank change mode - switch on click for rapid switching (no restrictions)
-                self.previous_bank_group()
+            if self.page_change_mode_active and bottom_new_press:
+                # Already in page change mode - switch on click for rapid switching (no restrictions)
+                self.previous_page()
                 self.unlock_bank()
                 return
-            elif not self.bank_change_mode_active and bottom_new_release and not bottom_was_long_held and only_top_held:
-                # Entering bank change mode - only allow if ONLY top is held
-                self.previous_bank_group()
+            elif not self.page_change_mode_active and bottom_new_release and not bottom_was_long_held and only_top_held:
+                # Entering page change mode - only allow if ONLY top is held
+                self.previous_page()
                 self.unlock_bank()
                 return
 
@@ -161,36 +164,53 @@ class MidiController:
         """
         Checks if any button was double-pressed to lock/unlock the corresponding bank.
         Also handles unlocking once all buttons are released, if 'unlock_pending' is set.
+        In config mode, single click locks/toggles banks instead of double-press.
         """
         # Check button states
         all_buttons_released = all(not button.pressed for button in self.buttons)
         any_new_button_press = any(button.detected_new_press for button in self.buttons)
         
-        # Check if exit button for bank change mode was released
-        if self.bank_change_mode_active and self.bank_change_exit_button_idx != -1:
-            if not self.buttons[self.bank_change_exit_button_idx].pressed:
-                # Exit button released - exit bank change mode
-                self.bank_change_mode_active = False
-                self.bank_change_exit_button_idx = -1
-                self.bank_limit_blink_idx = -1
-                self.bank_limit_blink_locked = False
+        # Check if exit button for page change mode was released
+        if self.page_change_mode_active and self.page_change_exit_button_idx != -1:
+            if not self.buttons[self.page_change_exit_button_idx].pressed:
+                # Exit button released - exit page change mode
+                self.page_change_mode_active = False
+                self.page_change_exit_button_idx = -1
+                self.page_limit_blink_idx = -1
+                self.page_limit_blink_locked = False
         
-        # Clear bank_group_just_changed when all buttons are released
+        # Clear page_just_changed when all buttons are released
         if all_buttons_released:
-            self.bank_group_just_changed = False
-            # Also clear bank change mode state when all released
-            self.bank_change_mode_active = False
-            self.bank_change_exit_button_idx = -1
-            self.bank_limit_blink_idx = -1
-            self.bank_limit_blink_locked = False
+            self.page_just_changed = False
+            # Also clear page change mode state when all released
+            self.page_change_mode_active = False
+            self.page_change_exit_button_idx = -1
+            self.page_limit_blink_idx = -1
+            self.page_limit_blink_locked = False
+        
+        # CONFIG MODE: Single click locks/toggles banks
+        if self.config_mode and not self.page_change_mode_active:
+            for idx, button in enumerate(self.buttons):
+                if button.detected_new_press:
+                    if self.locked_bank_idx == idx:
+                        # Click on locked bank = unlock (back to global)
+                        self.unlock_bank()
+                    else:
+                        # Click on different bank = switch lock to that bank  
+                        self.lock_bank(idx)
+                    return
+            # In config mode, skip normal lock handling
+            return
+        
+        # NORMAL MODE: Double-press and unlock_pending logic
         
         # Step 1: Set unlock_pending when all buttons are released after a lock
         if self.locked_bank_idx != -1 and all_buttons_released and not self.unlock_pending:
             self.unlock_pending = True
         
         # Step 2: Check for double-press events to lock/unlock
-        # Skip if in bank change mode - no locking allowed until mode exits
-        if not self.bank_change_mode_active:
+        # Skip if in page change mode - no locking allowed until mode exits
+        if not self.page_change_mode_active:
             for idx, button in enumerate(self.buttons):
                 if button.was_double_pressed:
                     time_since_unlock = time.monotonic() - self._last_unlock_time
@@ -233,7 +253,7 @@ class MidiController:
     def send_cc_messages(self):
         """
         Sends MIDI messages for any slider whose value changed, if 'should_send_cc' returns True.
-        Supports multi-channel output where each bank/row can send to multiple MIDI channels.
+        Supports multi-channel output where each page/bank can send to multiple MIDI channels.
         Handles both CC (Control Change) and AT (Channel Aftertouch) message types.
         Each bank (primary and additional) sends according to its own type setting.
         """
@@ -243,38 +263,38 @@ class MidiController:
                 if self.current_bank_idx == -1:
                     main_channels = self.global_channels
                     main_type = self.global_message_type
-                    main_row_idx = -1  # Global bank
+                    main_bank_idx = -1  # Global bank
                 else:
-                    main_channels = self.channel_lookup[self.current_bank_group_idx][self.current_bank_idx]
-                    main_type = self.type_lookup[self.current_bank_group_idx][self.current_bank_idx]
-                    main_row_idx = self.current_bank_idx
+                    main_channels = self.channel_lookup[self.current_page_idx][self.current_bank_idx]
+                    main_type = self.type_lookup[self.current_page_idx][self.current_bank_idx]
+                    main_bank_idx = self.current_bank_idx
                 
                 # Use first channel for pickup mode check (handles overlap gracefully)
-                if self.should_send_cc(slider, slider_idx, main_channels[0], main_type, main_row_idx):
+                if self.should_send_cc(slider, slider_idx, main_channels[0], main_type, main_bank_idx):
                     # Send primary bank message based on its type
                     if main_type == "AT":
                         midi_manager.send_aftertouch(main_channels, slider.cc_value, 
-                                                      slider_idx, self.current_bank_group_idx, main_row_idx)
+                                                      slider_idx, self.current_page_idx, main_bank_idx)
                     else:
                         cc_with_channels = [(slider.current_assigned_cc_number, ch) for ch in main_channels]
                         midi_manager.send_cc(cc_with_channels, slider.cc_value)
                     
                     # Process each additional bank according to its own type
                     for i, add_cc in enumerate(slider.additional_assigned_cc_numbers):
-                        row_idx = self.additional_bank_indicies[i]
-                        add_channels = self.channel_lookup[self.current_bank_group_idx][row_idx]
-                        add_type = self.type_lookup[self.current_bank_group_idx][row_idx]
+                        bank_idx = self.additional_bank_indicies[i]
+                        add_channels = self.channel_lookup[self.current_page_idx][bank_idx]
+                        add_type = self.type_lookup[self.current_page_idx][bank_idx]
                         
                         if add_type == "AT":
                             midi_manager.send_aftertouch(add_channels, slider.cc_value,
-                                                          slider_idx, self.current_bank_group_idx, row_idx)
+                                                          slider_idx, self.current_page_idx, bank_idx)
                         else:
                             cc_with_channels = [(add_cc, ch) for ch in add_channels]
                             midi_manager.send_cc(cc_with_channels, slider.cc_value)
                     
                     slider.cc_value_changed = False
 
-    def should_send_cc(self, slider, slider_idx, channel, message_type="CC", row_idx=-1):
+    def should_send_cc(self, slider, slider_idx, channel, message_type="CC", bank_idx=-1):
         """
         Determines whether a MIDI message should be sent based on pickup mode logic.
         
@@ -286,7 +306,7 @@ class MidiController:
             slider_idx (int): Index of the slider (0-3)
             channel (int): The MIDI channel (0-indexed) for this slider's current bank
             message_type (str): "CC" for Control Change, "AT" for Channel Aftertouch
-            row_idx (int): Row index (-1 for global, 0-3 for banks)
+            bank_idx (int): Bank index (-1 for global, 0-3 for banks)
             
         Returns:
             bool: True if a message should be sent, False otherwise
@@ -297,7 +317,7 @@ class MidiController:
         # Get last sent value based on message type
         # For AT, use per-slider tracking for independent pickup behavior
         if message_type == "AT":
-            last_cc_sent = midi_manager.get_last_at_value_per_slider(slider_idx, self.current_bank_group_idx, row_idx)
+            last_cc_sent = midi_manager.get_last_at_value_per_slider(slider_idx, self.current_page_idx, bank_idx)
         else:
             last_cc_sent = midi_manager.get_last_cc_value_sent(cc_number, channel)
 
@@ -404,8 +424,8 @@ class MidiController:
             current_channel = self.global_channels[0]
             current_type = self.global_message_type
         else:
-            current_channel = self.channel_lookup[self.current_bank_group_idx][self.current_bank_idx][0]
-            current_type = self.type_lookup[self.current_bank_group_idx][self.current_bank_idx]
+            current_channel = self.channel_lookup[self.current_page_idx][self.current_bank_idx][0]
+            current_type = self.type_lookup[self.current_page_idx][self.current_bank_idx]
 
         for idx, slider in enumerate(self.sliders):
             # Step 1: Assign primary CC number
@@ -426,7 +446,7 @@ class MidiController:
             # Step 3: Reset pickup mode tracking to prevent unwanted jumps
             # Use appropriate last value based on message type (per-slider for AT)
             if current_type == "AT":
-                last_sent = midi_manager.get_last_at_value_per_slider(idx, self.current_bank_group_idx, self.current_bank_idx)
+                last_sent = midi_manager.get_last_at_value_per_slider(idx, self.current_page_idx, self.current_bank_idx)
             else:
                 last_sent = midi_manager.get_last_cc_value_sent(slider.current_assigned_cc_number, current_channel)
             slider.crossing_cc_value = last_sent
@@ -441,11 +461,11 @@ class MidiController:
 
     def setup_cc_banks(self):
         """
-        Prepares the main and per-group CC banks.
+        Prepares the main and per-page CC banks.
         """
         self.global_cc_bank = cfg.GLOBAL_CC_BANK
 
-        self.cc_bank_groups = cfg.CC_BANK_GROUPS
+        self.pages = cfg.PAGES
 
         # Default global CC assignments
         for idx, slider in enumerate(self.sliders):
@@ -453,7 +473,7 @@ class MidiController:
 
     def setup_channel_lookup(self):
         """
-        Precomputes the MIDI channel lookup table for all bank groups and rows.
+        Precomputes the MIDI channel lookup table for all pages and banks.
         Also stores the global channels for the global CC bank.
         Each entry is now a list of channels to support multi-channel output.
         Additionally precomputes message type lookup for CC vs Aftertouch.
@@ -461,16 +481,16 @@ class MidiController:
         self.global_channels = settings.get_global_channels()
         self.global_message_type = settings.get_global_message_type()
         
-        # channel_lookup[bank_group_idx][row_idx] = list of 0-indexed channels
+        # channel_lookup[page_idx][bank_idx] = list of 0-indexed channels
         self.channel_lookup = [
-            [settings.get_resolved_channels(bg, row) for row in range(4)]
-            for bg in range(4)
+            [settings.get_resolved_channels(page, bank) for bank in range(4)]
+            for page in range(4)
         ]
         
-        # type_lookup[bank_group_idx][row_idx] = "CC" or "AT"
+        # type_lookup[page_idx][bank_idx] = "CC" or "AT"
         self.type_lookup = [
-            [settings.get_resolved_message_type(bg, row) for row in range(4)]
-            for bg in range(4)
+            [settings.get_resolved_message_type(page, bank) for bank in range(4)]
+            for page in range(4)
         ]
 
     def get_current_cc_bank(self):
@@ -480,7 +500,7 @@ class MidiController:
         """
         if self.current_bank_idx == -1:
             return self.global_cc_bank
-        return self.cc_bank_groups[self.current_bank_group_idx][self.current_bank_idx]
+        return self.pages[self.current_page_idx][self.current_bank_idx]
 
     def get_additional_cc_numbers(self, idx):
         """
@@ -488,74 +508,74 @@ class MidiController:
         """
         additional_cc_numbers = []
         for button_idx in self.additional_bank_indicies:
-            bank = self.cc_bank_groups[self.current_bank_group_idx][button_idx]
+            bank = self.pages[self.current_page_idx][button_idx]
             additional_cc_numbers.append(bank[idx])
         return additional_cc_numbers
 
-    def next_bank_group(self):
+    def next_page(self):
         """
-        Moves to the next bank group if available (no wrap-around).
-        Enters bank change mode - hides all button colors until exit button released.
+        Moves to the next page if available (no wrap-around).
+        Enters page change mode - hides all button colors until exit button released.
         """
         current_time = time.monotonic()
-        new_idx = self.current_bank_group_idx + 1
+        new_idx = self.current_page_idx + 1
         
-        # Enter bank change mode - bottom button (idx 0) must be released to exit
-        self.bank_change_mode_active = True
-        self.bank_change_exit_button_idx = 0
-        self.bank_group_just_changed = True
+        # Enter page change mode - bottom button (idx 0) must be released to exit
+        self.page_change_mode_active = True
+        self.page_change_exit_button_idx = 0
+        self.page_just_changed = True
         
         if new_idx <= 3:
-            self.current_bank_group_idx = new_idx
+            self.current_page_idx = new_idx
             # Clear any pending limit blink on successful change
-            self.bank_limit_blink_idx = -1
-            self.bank_limit_blink_locked = False
+            self.page_limit_blink_idx = -1
+            self.page_limit_blink_locked = False
         else:
-            # Already at max - trigger a quick blink on the bank indicator pixel
+            # Already at max - trigger a quick blink on the page indicator pixel
             # Only start new blink if not already in a locked blink cycle
-            if not self.bank_limit_blink_locked:
-                self.bank_limit_blink_idx = self.current_bank_group_idx
-                self.bank_limit_blink_time = current_time
-                self.bank_limit_blink_locked = True
+            if not self.page_limit_blink_locked:
+                self.page_limit_blink_idx = self.current_page_idx
+                self.page_limit_blink_time = current_time
+                self.page_limit_blink_locked = True
 
-    def previous_bank_group(self):
+    def previous_page(self):
         """
-        Moves to the previous bank group if available (no wrap-around).
-        Enters bank change mode - hides all button colors until exit button released.
+        Moves to the previous page if available (no wrap-around).
+        Enters page change mode - hides all button colors until exit button released.
         """
         current_time = time.monotonic()
-        new_idx = self.current_bank_group_idx - 1
+        new_idx = self.current_page_idx - 1
         
-        # Enter bank change mode - top button (idx 3) must be released to exit
-        self.bank_change_mode_active = True
-        self.bank_change_exit_button_idx = 3
-        self.bank_group_just_changed = True
+        # Enter page change mode - top button (idx 3) must be released to exit
+        self.page_change_mode_active = True
+        self.page_change_exit_button_idx = 3
+        self.page_just_changed = True
         
         if new_idx >= 0:
-            self.current_bank_group_idx = new_idx
+            self.current_page_idx = new_idx
             # Clear any pending limit blink on successful change
-            self.bank_limit_blink_idx = -1
-            self.bank_limit_blink_locked = False
+            self.page_limit_blink_idx = -1
+            self.page_limit_blink_locked = False
         else:
-            # Already at min - trigger a quick blink on the bank indicator pixel
+            # Already at min - trigger a quick blink on the page indicator pixel
             # Only start new blink if not already in a locked blink cycle
-            if not self.bank_limit_blink_locked:
-                self.bank_limit_blink_idx = self.current_bank_group_idx
-                self.bank_limit_blink_time = current_time
-                self.bank_limit_blink_locked = True
+            if not self.page_limit_blink_locked:
+                self.page_limit_blink_idx = self.current_page_idx
+                self.page_limit_blink_time = current_time
+                self.page_limit_blink_locked = True
 
-    def update_bank_change_feedback(self):
+    def update_page_change_feedback(self):
         """
-        Returns current bank change mode feedback state for use by the lights manager.
+        Returns current page change mode feedback state for use by the lights manager.
         
-        When in bank change mode, all button colors are hidden - only the bank indicator
+        When in page change mode, all button colors are hidden - only the page indicator
         (white dot) is shown, or the blink animation if at a limit.
         
         Blink cycle is on-off-on to ensure visibility even with repeated attempts.
         
         Returns:
             dict: {
-                'bank_change_mode': bool (True if in bank change mode - hide all button colors),
+                'page_change_mode': bool (True if in page change mode - hide all button colors),
                 'blink_button_idx': int (-1 if none),
                 'blink_off': bool (True if we're in the "off" phase of the blink)
             }
@@ -565,20 +585,20 @@ class MidiController:
         blink_off = False
         
         # Check if limit blink is active (on-off-on cycle)
-        if self.bank_limit_blink_idx != -1:
-            elapsed = current_time - self.bank_limit_blink_time
-            if elapsed < self.bank_limit_blink_duration:
-                blink_button_idx = self.bank_limit_blink_idx
+        if self.page_limit_blink_idx != -1:
+            elapsed = current_time - self.page_limit_blink_time
+            if elapsed < self.page_limit_blink_duration:
+                blink_button_idx = self.page_limit_blink_idx
                 # Divide cycle into thirds: ON (0-33%), OFF (33-66%), ON (66-100%)
-                cycle_position = elapsed / self.bank_limit_blink_duration
+                cycle_position = elapsed / self.page_limit_blink_duration
                 blink_off = (0.33 <= cycle_position < 0.66)
             else:
                 # Blink cycle complete - unlock and clear
-                self.bank_limit_blink_idx = -1
-                self.bank_limit_blink_locked = False
+                self.page_limit_blink_idx = -1
+                self.page_limit_blink_locked = False
         
         return {
-            'bank_change_mode': self.bank_change_mode_active,
+            'page_change_mode': self.page_change_mode_active,
             'blink_button_idx': blink_button_idx,
             'blink_off': blink_off
         }
