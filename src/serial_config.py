@@ -100,8 +100,8 @@ class SerialConfigHandler:
                 })
                 self._learn_mode = False
                 self._learn_slider_idx = -1
-        elif not self._learn_mode and self._midi_manager:
-            # Passively monitor incoming MIDI for display
+        elif not self._learn_mode and self._midi_manager and self._config_mode:
+            # Passively monitor incoming MIDI for display (only in config mode)
             midi_data = self._midi_manager.receive_cc_or_at()
             if midi_data:
                 self._last_midi_type = midi_data[0]

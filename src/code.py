@@ -1,10 +1,9 @@
-# Version 1.20 - 2024-06-01
+# Version 1.20
 
 import time
 import board
 import digitalio
 import analogio
-import microcontroller
 
 from controller import MidiController
 from lights import LightsManager
@@ -39,8 +38,6 @@ lights_manager.startup_animation()
 # Initialize serial config handler
 serial_config.set_controller(midi_controller)
 serial_config.set_midi_manager(midi_manager)
-
-print(f"clock freq: {microcontroller.cpu.frequency}")
 
 # Main loop
 while True:
