@@ -26,7 +26,7 @@ btn2.direction = digitalio.Direction.INPUT
 btn2.pull = digitalio.Pull.UP
 
 btn3 = digitalio.DigitalInOut(board.GP3)
-btn3.direction = digitalio.Direction.INPUTq
+btn3.direction = digitalio.Direction.INPUT
 btn3.pull = digitalio.Pull.UP
 
 # All buttons pressed = all values are False (LOW due to pull-up)
