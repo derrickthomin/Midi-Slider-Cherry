@@ -72,3 +72,28 @@ Output to multiple MIDI channels simultaneously using the `|` separator:
 > **Error handling:** Invalid values fall back gracefully (invalid row → bank, invalid bank → global, invalid global → channel 1). If the JSON file is malformed, factory defaults are used.
 
 ---
+
+## Updating Firmware
+
+### What You Need
+
+- This repository (download or clone it)
+- A USB-C cable connected to the LumaFader
+
+### Locate the Boot Button
+
+Remove the top panel to access the boot button on the Raspberry Pi Pico.
+
+![Boot button location](images/boot_button.png)
+
+### Steps
+
+1. **Enter boot mode:** Hold the **BOOT** button on the Pico, then plug in the USB cable (or tap RESET while holding BOOT). Release the button. A drive called **RPI-RP2** should appear on your computer.
+
+2. **Flash nuke:** Drag `uf2 current/flash_nuke.uf2` onto the **RPI-RP2** drive. The device will reboot and reappear as **RPI-RP2** after a few seconds.
+
+3. **Install CircuitPython:** Drag `uf2 current/adafruit-circuitpython-raspberry_pi_pico-en_US-8.2.6.uf2` onto the **RPI-RP2** drive. The device will reboot and reappear as a drive called **CIRCUITPY**.
+
+4. **Copy source files:** Copy the entire contents of the `src/` folder onto the **CIRCUITPY** drive. This includes all `.py` files, `settings.json`, and the `lib/` folder. Overwrite if prompted.
+
+5. **Done.** The device will restart automatically and run the new firmware.
