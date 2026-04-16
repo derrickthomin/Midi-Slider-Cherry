@@ -55,11 +55,14 @@ Output to multiple MIDI channels simultaneously using the `|` separator:
 ```
 
 **In this example:**
-- Bank 1, sliders a,b,c...Use global channels (1,2,3,4)
-- Bank 1, slider b........Use channels 5,6
-- Bank 2, sliders a,b.....Use bank channels (8,9)
-- Bank 2, slider b........Use global channels (1,2,3,4)
-- Bank 2, slider b........Use channel 10
+
+| Bank | Slider(s) | Channel(s) |
+|------|-----------|------------|
+| 1 | a, b, d | Global (1,2,3,4) |
+| 1 | c | 5, 6 |
+| 2 | a, b | Bank (8,9) |
+| 2 | c | Global (1,2,3,4) |
+| 2 | d | 10 |
 
 **Supported formats:**
 - Single integer: `1` or `"1"`
