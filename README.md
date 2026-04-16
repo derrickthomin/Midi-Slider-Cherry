@@ -16,6 +16,14 @@ The LumaFader 68 is a compact MIDI controller featuring four long-throw faders, 
 
 ---
 
+## What's New (April 2026)
+
+- **Multi-channel output** -- send CC messages to multiple MIDI channels simultaneously using the `|` separator
+- **Aftertouch support** -- channel pressure (aftertouch) messages now supported
+- **Web Config Utility** -- configure settings directly from the browser via Web Serial (Chrome/Edge)
+
+---
+
 ## Configuration
 
 Edit `settings.json` to customize CC mappings and MIDI channels. The file includes a `_helptext` section with inline documentation.
