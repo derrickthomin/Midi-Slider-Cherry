@@ -96,4 +96,4 @@ The boot button is on the bottom PCB. See the image below for where it is locate
 
 4. **Copy source files:** Copy the entire contents of the `src/` folder onto the **CIRCUITPY** drive. This includes all `.py` files, `settings.json`, and the `lib/` folder. Overwrite if prompted.
 
-5. **Done.** The device will restart automatically and run the new firmware.
+5. **Done.** Unplug the LumaFader and plug it back in.
