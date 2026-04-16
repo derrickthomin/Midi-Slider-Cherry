@@ -77,14 +77,14 @@ Output to multiple MIDI channels simultaneously using the `|` separator:
 
 ### What You Need
 
-- This repository (download or clone it)
-- A USB-C cable connected to the LumaFader
+- This repository (download it from this page)
+- A USB-C data cable connected to the LumaFader
 
 ### Locate the Boot Button
 
-Remove the top panel to access the boot button on the Raspberry Pi Pico.
+The boot button is on the bottom PCB. See the image below for where it is located. I usually just stick a screwdriver through the hole in the case for the USB and use that to press the button. Alternaltivly you can take the top panel off with an m3 hex key.
 
-![Boot button location](images/boot_button.png)
+<img width="450" height="1246" alt="Show Boot Button" src="https://github.com/user-attachments/assets/2fdeeb8c-3297-4982-aabe-627f1dcd7ce0" />
 
 ### Steps
 
