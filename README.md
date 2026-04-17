@@ -18,9 +18,9 @@ The LumaFader 68 is a compact MIDI controller featuring four long-throw faders, 
 
 ## What's New (April 2026)
 
-- **Multi-channel output** -- send CC messages to multiple MIDI channels simultaneously using the `|` separator
-- **Aftertouch support** -- channel pressure (aftertouch) messages now supported
-- **Web Config Utility** -- configure settings directly from the browser via Web Serial (Chrome/Edge)
+- **Multi-channel output** - send CC messages to multiple MIDI channels simultaneously using the `|` separator
+- **Aftertouch support** - channel pressure (aftertouch) messages now supported
+- **Web Config Utility** - configure settings directly from the browser via Web Serial (Chrome/Edge)
 
 ---
 
@@ -44,17 +44,7 @@ By default, all page/bank channels are empty, so everything uses `GLOBAL_CHANNEL
 
 Any channel field can target multiple MIDI channels at once using the `|` separator (e.g. `"1|2|3"`). This sends the same CC or aftertouch message to all specified channels simultaneously.
 
-Example with `GLOBAL_CHANNEL` set to `"1|2|3|4"`:
-
-| Page | Bank(s) | Channel(s) | Why |
-|------|---------|------------|-----|
-| 1 | a, b, d | 1, 2, 3, 4 | Inherited from global |
-| 1 | c | 5, 6 | Set explicitly on bank |
-| 2 | a, b | 8, 9 | Inherited from page |
-| 2 | c | 1, 2, 3, 4 | Overridden back to global |
-| 2 | d | 10 | Set explicitly on bank |
-
-For best results with pickup mode, avoid overlapping channels between different settings.
+For example you can set `GLOBAL_CHANNEL`1` to `"1|2|3|4"`
 
 ---
 
