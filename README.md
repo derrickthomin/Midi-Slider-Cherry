@@ -26,59 +26,35 @@ The LumaFader 68 is a compact MIDI controller featuring four long-throw faders, 
 
 ## Configuration
 
-Use the web tool or Edit `settings.json` to customize CC mappings and MIDI channels. Learn mode is only available in the web tool. See manual for details on the json structure.
+Use the [Web Config Utility](https://derrickthomin.github.io/Midi-Slider-Cherry/) to configure your LumaFader (Chrome/Edge, requires Web Serial). You can also edit `settings.json` directly -- see the user manual for details on the JSON structure.
 
-<img width="500" height="1182" alt="Web Settings Iterface" src="https://github.com/user-attachments/assets/b8ba807f-c97e-4158-9761-0b9c1cd95882" />
-
+<img width="500" height="1182" alt="Web Settings Interface" src="https://github.com/user-attachments/assets/b8ba807f-c97e-4158-9761-0b9c1cd95882" />
 
 ### Channel Inheritance
+
+Each slider's MIDI channel is resolved by inheritance. If a bank's channel is left empty, it falls back to the page channel. If the page channel is empty, it falls back to the global channel.
+
+```
+Bank Channel → Page Channel → Global Channel
 ```
 
-By default, all bank/row channels are empty (`""`), so everything uses `GLOBAL_CHANNEL`. 
-
-### Keywords
-
-| Keyword | Meaning | Valid In |
-|---------|---------|----------|
-| `""` (empty) | Inherit from parent | Bank, Row |
-| `"GLOBAL"` | Use global channel directly | Bank, Row |
-| `"BANK"` | Use bank channel | Row only |
+By default, all page/bank channels are empty, so everything uses `GLOBAL_CHANNEL`.
 
 ### Multi-Channel Output
 
-Output to multiple MIDI channels simultaneously using the `|` separator:
+Any channel field can target multiple MIDI channels at once using the `|` separator (e.g. `"1|2|3"`). This sends the same CC or aftertouch message to all specified channels simultaneously.
 
-```json
-{
-    "GLOBAL_CHANNEL": "1|2|3|4",
-    
-    "CC_BANKS_1_CHANNEL": "",
-    "CC_BANKS_1_ROW_CHANNELS": ["", "", "5|6", ""],
-    
-    "CC_BANKS_2_CHANNEL": "8|9",
-    "CC_BANKS_2_ROW_CHANNELS": ["BANK", "BANK", "GLOBAL", "10"]
-}
-```
+Example with `GLOBAL_CHANNEL` set to `"1|2|3|4"`:
 
-**In this example:**
+| Page | Bank(s) | Channel(s) | Why |
+|------|---------|------------|-----|
+| 1 | a, b, d | 1, 2, 3, 4 | Inherited from global |
+| 1 | c | 5, 6 | Set explicitly on bank |
+| 2 | a, b | 8, 9 | Inherited from page |
+| 2 | c | 1, 2, 3, 4 | Overridden back to global |
+| 2 | d | 10 | Set explicitly on bank |
 
-| Bank | Slider(s) | Channel(s) |
-|------|-----------|------------|
-| 1 | a, b, d | Global (1,2,3,4) |
-| 1 | c | 5, 6 |
-| 2 | a, b | Bank (8,9) |
-| 2 | c | Global (1,2,3,4) |
-| 2 | d | 10 |
-
-**Supported formats:**
-- Single integer: `1` or `"1"`
-- Multi-channel: `"1|2|3"`
-- Empty/inherit: `""`
-- Keywords: `"GLOBAL"`, `"BANK"`
-
-> **Note:** For best results with pickup mode, avoid overlapping channels between different settings. If overlap occurs, pickup mode uses the first channel for crossing detection, which may cause value jumps on other channels.
-
-> **Error handling:** Invalid values fall back gracefully (invalid row → bank, invalid bank → global, invalid global → channel 1). If the JSON file is malformed, factory defaults are used.
+For best results with pickup mode, avoid overlapping channels between different settings.
 
 ---
 
