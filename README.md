@@ -26,17 +26,15 @@ The LumaFader 68 is a compact MIDI controller featuring four long-throw faders, 
 
 ## Configuration
 
-Edit `settings.json` to customize CC mappings and MIDI channels. The file includes a `_helptext` section with inline documentation.
+Use the web tool or Edit `settings.json` to customize CC mappings and MIDI channels. Learn mode is only available in the web tool. See manual for details on the json structure.
+
+<img width="500" height="1182" alt="Web Settings Iterface" src="https://github.com/user-attachments/assets/b8ba807f-c97e-4158-9761-0b9c1cd95882" />
+
 
 ### Channel Inheritance
-
-Channels inherit from parent levels when left empty:
-
-```
-Row Channel → Bank Channel → Global Channel
 ```
 
-By default, all bank/row channels are empty (`""`), so everything uses `GLOBAL_CHANNEL`.
+By default, all bank/row channels are empty (`""`), so everything uses `GLOBAL_CHANNEL`. 
 
 ### Keywords
 
