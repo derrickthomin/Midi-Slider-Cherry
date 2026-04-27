@@ -78,12 +78,10 @@ class LightsManager:
         if held_button_order is None:
             held_button_order = []
         
-        # Determine the channel and message type for looking up last sent values
+        # Message type remains bank/page/global scoped; channel lookup is per-slider.
         if bank_idx == -1:
-            channel = settings.get_global_channels()[0]
             message_type = settings.get_global_message_type()
         else:
-            channel = settings.get_resolved_channels(page_idx, bank_idx)[0]
             message_type = settings.get_resolved_message_type(page_idx, bank_idx)
         
         # Check for multi-bank mode and handle morphing
@@ -107,6 +105,10 @@ class LightsManager:
             if message_type == "AT":
                 last_sent_cc_value = midi_manager.get_last_at_value_per_slider(slider_idx, page_idx, bank_idx)
             else:
+                if bank_idx == -1:
+                    channel = settings.get_resolved_global_slider_channels(slider_idx)[0]
+                else:
+                    channel = settings.get_resolved_slider_channels(page_idx, bank_idx, slider_idx)[0]
                 last_sent_cc_value = midi_manager.get_last_cc_value_sent(slider.current_assigned_cc_number, channel)
             
             if abs(slider_cc_value - last_sent_cc_value) > 4:

@@ -13,6 +13,7 @@ Responses are newline-terminated strings starting with "RSP:".
 
 CMD:PING               - Returns RSP:{"status":"ok","device":"lumafader"}
 CMD:GET_SETTINGS       - Returns RSP:<settings json>
+CMD:GET_CAPS           - Returns RSP:<firmware capabilities>
 CMD:SET_SETTINGS|json  - Updates settings from JSON, saves to file
 CMD:GET_STATUS         - Returns RSP:<current device state for interactive UI>
 CMD:SET_CONFIG_MODE|N  - Enable (1) or disable (0) config mode
@@ -27,6 +28,9 @@ import supervisor
 SETTINGS_FILE = "settings.json"
 CONFIG_MODE_TIMEOUT = 5.0  # Auto-exit config mode if no ping for 5 seconds
 LEARN_MODE_TIMEOUT = 30.0  # Auto-cancel learn mode after 30 seconds
+
+# Serial protocol version for Web Config capability negotiation
+SERIAL_PROTOCOL_VERSION = 1
 
 
 class SerialConfigHandler:
@@ -139,6 +143,15 @@ class SerialConfigHandler:
             
             elif command == "GET_SETTINGS":
                 self._send_file_contents(SETTINGS_FILE)
+
+            elif command == "GET_CAPS":
+                self._respond({
+                    "type": "caps",
+                    "protocol_version": SERIAL_PROTOCOL_VERSION,
+                    "capabilities": {
+                        "per_slider_channels": True,
+                    }
+                })
             
             elif command == "GET_STATUS":
                 self._send_status()

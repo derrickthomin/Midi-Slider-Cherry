@@ -3,13 +3,19 @@
         "=== LumaFader Settings ===",
         "",
         "CHANNELS: Set as number (1) or string. Use pipe for multi-channel: 1|2|3",
-        "  <blank>  = inherit from parent (bank -> page -> global)",
+        "  <blank>  = inherit from parent (slider -> bank -> page -> global)",
         "  GLOBAL   = use global channel directly",
         "  PAGE     = use page channel (bank settings only)",
         "",
         "MESSAGE TYPES: CC (Control Change) or AT (Channel Aftertouch)",
         "  CC = sends CC messages using the CC numbers in the page arrays",
         "  AT = sends aftertouch pressure (CC numbers ignored, one value per channel)",
+        "",
+        "GLOBAL_SLIDER_CHANNELS: Per-slider channel overrides for the global bank.",
+        "  Each entry corresponds to a slider (A, B, C, D). Blank = use GLOBAL_CHANNEL.",
+        "",
+        "PAGE_N_BANK_SLIDER_CHANNELS: Per-slider channel overrides within each bank.",
+        "  Outer array = bank (0-3), inner array = slider (A-D). Blank = use bank channel.",
         "",
         "Tip: Avoid overlapping channels between pages for best pickup mode behavior."
     ],
@@ -18,6 +24,7 @@
     "GLOBAL_MESSAGE_TYPE": "CC",
 
     "GLOBAL_CC_BANK": [0, 1, 2, 3],
+    "GLOBAL_SLIDER_CHANNELS": ["", "", "", ""],
 
     "PAGE_1_BANKS": [
         [4, 5, 6, 7],
@@ -27,6 +34,12 @@
     ],
     "PAGE_1_CHANNEL": "",
     "PAGE_1_BANK_CHANNELS": ["", "", "", ""],
+    "PAGE_1_BANK_SLIDER_CHANNELS": [
+        ["", "", "", ""],
+        ["", "", "", ""],
+        ["", "", "", ""],
+        ["", "", "", ""]
+    ],
     "PAGE_1_TYPE": "",
     "PAGE_1_BANK_TYPES": ["", "", "", ""],
 
@@ -38,6 +51,12 @@
     ],
     "PAGE_2_CHANNEL": "",
     "PAGE_2_BANK_CHANNELS": ["", "", "", ""],
+    "PAGE_2_BANK_SLIDER_CHANNELS": [
+        ["", "", "", ""],
+        ["", "", "", ""],
+        ["", "", "", ""],
+        ["", "", "", ""]
+    ],
     "PAGE_2_TYPE": "",
     "PAGE_2_BANK_TYPES": ["", "", "", ""],
 
@@ -49,6 +68,12 @@
     ],
     "PAGE_3_CHANNEL": "",
     "PAGE_3_BANK_CHANNELS": ["", "", "", ""],
+    "PAGE_3_BANK_SLIDER_CHANNELS": [
+        ["", "", "", ""],
+        ["", "", "", ""],
+        ["", "", "", ""],
+        ["", "", "", ""]
+    ],
     "PAGE_3_TYPE": "",
     "PAGE_3_BANK_TYPES": ["", "", "", ""],
 
@@ -60,6 +85,12 @@
     ],
     "PAGE_4_CHANNEL": "",
     "PAGE_4_BANK_CHANNELS": ["", "", "", ""],
+    "PAGE_4_BANK_SLIDER_CHANNELS": [
+        ["", "", "", ""],
+        ["", "", "", ""],
+        ["", "", "", ""],
+        ["", "", "", ""]
+    ],
     "PAGE_4_TYPE": "",
     "PAGE_4_BANK_TYPES": ["", "", "", ""]
 }
