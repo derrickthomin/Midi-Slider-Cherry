@@ -28,7 +28,7 @@ The LumaFader 68 is a compact MIDI controller featuring four long-throw faders, 
 
 Use the [Web Config Utility](https://derrickthomin.github.io/Midi-Slider-Cherry/) to configure your LumaFader (Chrome/Edge, requires Web Serial). You can also edit `settings.json` directly -- see the user manual for details on the JSON structure.
 
-<img width="500" height="1182" alt="Web Settings Interface" src="https://github.com/user-attachments/assets/b8ba807f-c97e-4158-9761-0b9c1cd95882" />
+<img width="500" height="" alt="Web Settings Interface" src="https://github.com/user-attachments/assets/b8ba807f-c97e-4158-9761-0b9c1cd95882" />
 
 ### Channel Inheritance
 
