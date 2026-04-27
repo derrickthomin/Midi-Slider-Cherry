@@ -13,6 +13,10 @@ class Settings:
     # Valid message types
     VALID_MESSAGE_TYPES = ("CC", "AT")  # CC = Control Change, AT = Channel Aftertouch
     
+    # Default per-slider channel overrides (empty = inherit)
+    DEFAULT_GLOBAL_SLIDER_CHANNELS = ["", "", "", ""]
+    DEFAULT_BANK_SLIDER_CHANNELS = [["", "", "", ""], ["", "", "", ""], ["", "", "", ""], ["", "", "", ""]]
+
     # Default CC bank settings
     DEFAULT_GLOBAL_CC_BANK = [0, 1, 2, 3]
     DEFAULT_PAGE_1_BANKS = [
@@ -102,7 +106,19 @@ class Settings:
         for page_key in ["PAGE_1_BANKS", "PAGE_2_BANKS", "PAGE_3_BANKS", "PAGE_4_BANKS"]:
             if not self._validate_page_banks(self.settings[page_key]):
                 return False
-                
+
+        # Validate GLOBAL_SLIDER_CHANNELS if present (optional, 4-element array)
+        gsc = self.settings.get("GLOBAL_SLIDER_CHANNELS")
+        if gsc is not None and not self._validate_slider_channels(gsc):
+            return False
+
+        # Validate PAGE_N_BANK_SLIDER_CHANNELS if present (optional, 4x4 array)
+        for page_num in range(1, 5):
+            key = f"PAGE_{page_num}_BANK_SLIDER_CHANNELS"
+            bsc = self.settings.get(key)
+            if bsc is not None and not self._validate_bank_slider_channels(bsc):
+                return False
+
         return True
     
     def _validate_cc_list(self, cc_list, expected_length):
@@ -146,17 +162,44 @@ class Settings:
                 return False
                 
         return True
+
+    def _validate_slider_channels(self, slider_channels):
+        """
+        Validate a 4-element array of per-slider channel values.
+        Each entry can be empty/null (inherit) or a valid channel string.
+        """
+        if not isinstance(slider_channels, list) or len(slider_channels) != 4:
+            print("Slider channels must be a list of 4 values")
+            return False
+        for val in slider_channels:
+            if not self._is_empty_or_null(val) and not self._is_valid_channel_value(val):
+                print(f"Invalid slider channel value: {val}")
+                return False
+        return True
+
+    def _validate_bank_slider_channels(self, bank_slider_channels):
+        """
+        Validate a 4x4 array of per-slider channel overrides (4 banks x 4 sliders).
+        """
+        if not isinstance(bank_slider_channels, list) or len(bank_slider_channels) != 4:
+            print("Bank slider channels must be a list of 4 lists")
+            return False
+        for bank_row in bank_slider_channels:
+            if not self._validate_slider_channels(bank_row):
+                return False
+        return True
     
     def _use_defaults(self):
         """
         Set settings to factory default values.
-        Channel settings use None to inherit (bank→page→global).
+        Channel settings use None to inherit (slider→bank→page→global).
         Type settings use None to inherit (bank→page→global), defaulting to "CC".
         """
         self.settings = {
             "GLOBAL_CHANNEL": self.DEFAULT_GLOBAL_CHANNEL,
             "GLOBAL_MESSAGE_TYPE": self.DEFAULT_GLOBAL_MESSAGE_TYPE,
             "GLOBAL_CC_BANK": self.DEFAULT_GLOBAL_CC_BANK,
+            "GLOBAL_SLIDER_CHANNELS": list(self.DEFAULT_GLOBAL_SLIDER_CHANNELS),
             "PAGE_1_BANKS": self.DEFAULT_PAGE_1_BANKS,
             "PAGE_2_BANKS": self.DEFAULT_PAGE_2_BANKS,
             "PAGE_3_BANKS": self.DEFAULT_PAGE_3_BANKS,
@@ -169,6 +212,10 @@ class Settings:
             "PAGE_2_BANK_CHANNELS": None,
             "PAGE_3_BANK_CHANNELS": None,
             "PAGE_4_BANK_CHANNELS": None,
+            "PAGE_1_BANK_SLIDER_CHANNELS": [list(r) for r in self.DEFAULT_BANK_SLIDER_CHANNELS],
+            "PAGE_2_BANK_SLIDER_CHANNELS": [list(r) for r in self.DEFAULT_BANK_SLIDER_CHANNELS],
+            "PAGE_3_BANK_SLIDER_CHANNELS": [list(r) for r in self.DEFAULT_BANK_SLIDER_CHANNELS],
+            "PAGE_4_BANK_SLIDER_CHANNELS": [list(r) for r in self.DEFAULT_BANK_SLIDER_CHANNELS],
             "PAGE_1_TYPE": None,
             "PAGE_2_TYPE": None,
             "PAGE_3_TYPE": None,
@@ -279,6 +326,9 @@ class Settings:
         - Single int: 1 → [0]
         - String int: "1" → [0]
         - Multi-channel: "1|2|3" → [0, 1, 2]
+
+        Multi-channel results are canonicalized (sorted + unique) so equivalent
+        sets like "2|1" and "1|2" resolve identically.
         
         Note: For multi-channel setups, avoid overlapping channels between
         GLOBAL and bank/row settings. If overlap occurs, pickup mode may
@@ -309,7 +359,9 @@ class Settings:
                         channels.append(int(p) - 1)
                     else:
                         return None  # Invalid part
-                return channels if channels else None
+                if not channels:
+                    return None
+                return sorted(set(channels))
         
         return None
     
@@ -551,6 +603,62 @@ class Settings:
         
         # 2. Bank types array is null/empty or missing this index → use page type
         return self._get_page_message_type(page_idx)
+
+    def get_resolved_global_slider_channels(self, slider_idx):
+        """
+        Get the resolved MIDI channels for a specific slider in the global bank.
+
+        Hierarchy:
+        - GLOBAL_SLIDER_CHANNELS[slider_idx] → if set
+        - GLOBAL_CHANNEL → fallback
+
+        Args:
+            slider_idx (int): Slider index (0-3)
+
+        Returns:
+            list: List of 0-indexed MIDI channels
+        """
+        gsc = self.settings.get("GLOBAL_SLIDER_CHANNELS")
+        if isinstance(gsc, list) and len(gsc) > slider_idx:
+            val = gsc[slider_idx]
+            if not self._is_empty_or_null(val):
+                parsed = self._parse_channels(val)
+                if parsed is not None:
+                    return parsed
+        return self.get_global_channels()
+
+    def get_resolved_slider_channels(self, page_idx, bank_idx, slider_idx):
+        """
+        Get the resolved MIDI channels for a specific slider within a page/bank.
+
+        Hierarchy (first valid value wins):
+        - PAGE_N_BANK_SLIDER_CHANNELS[bank_idx][slider_idx] → most specific
+        - Bank channel → get_resolved_channels(page_idx, bank_idx)
+        - Page channel → fallback
+        - Global channel → ultimate fallback
+
+        Args:
+            page_idx (int): Page index (0-3)
+            bank_idx (int): Bank index (0-3)
+            slider_idx (int): Slider index (0-3)
+
+        Returns:
+            list: List of 0-indexed MIDI channels
+        """
+        page_num = page_idx + 1
+        key = f"PAGE_{page_num}_BANK_SLIDER_CHANNELS"
+        bsc = self.settings.get(key)
+        if isinstance(bsc, list) and len(bsc) > bank_idx:
+            bank_row = bsc[bank_idx]
+            if isinstance(bank_row, list) and len(bank_row) > slider_idx:
+                val = bank_row[slider_idx]
+                if not self._is_empty_or_null(val):
+                    parsed = self._parse_channels(val)
+                    if parsed is not None:
+                        return parsed
+        # Fall back to bank-level channel resolution
+        return self.get_resolved_channels(page_idx, bank_idx)
+
 
 # Create a singleton instance
 settings = Settings()

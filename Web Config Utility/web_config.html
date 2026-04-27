@@ -314,13 +314,14 @@
             margin-top: 36px; padding-left: 14px;
         }
         .controls-left {
-            width: 76px; display: flex; align-items: center;
-            padding-top: 4px; flex-shrink: 0;
+            width: 76px; display: flex; flex-direction: column; align-items: flex-start;
+            padding-top: 4px; flex-shrink: 0; gap: 8px;
         }
         .slider-controls-area { display: flex; gap: 28px; }
         .slider-control { display: flex; flex-direction: column; align-items: center; width: 44px; gap: 4px; }
         .learn-channel-label { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #7a8aaa; }
         .learn-channel-label input[type="checkbox"] { width: 12px; height: 12px; margin: 0; accent-color: #1a8a1a; }
+        .controls-row-label { font-size: 9px; color: #7a8aaa; text-transform: uppercase; letter-spacing: 0.1em; padding-top: 4px; }
 
         .slider-learn-btn {
             padding: 3px 6px; font-size: 9px; font-family: inherit;
@@ -696,26 +697,32 @@
                                 </div>
                                 <div class="slider-controls-row">
                                     <div class="controls-left">
-                                        <label class="learn-channel-label">
-                                            <input type="checkbox" id="learnChannel" title="Also set channel from incoming MIDI">
+                                        <div class="controls-row-label">CC</div>
+                                        <div class="controls-row-label" id="sliderChRowLabel">Ch</div>
+                                        <div class="learn-channel-label" id="learnChannelWrap">
+                                            <input type="checkbox" id="learnChannel" title="Also set this slider's channel from incoming MIDI">
                                             <span>Learn Ch</span>
-                                        </label>
+                                        </div>
                                     </div>
                                     <div class="slider-controls-area">
                                         <div class="slider-control">
                                             <input type="number" class="cc-input" id="sliderCC0" min="0" max="127" value="0">
+                                            <input type="text" class="cc-input" id="sliderCh0" placeholder="-" title="Slider A channel (blank = inherit from bank/global)" style="font-size:11px;">
                                             <button type="button" class="slider-learn-btn" data-slider="0">Learn</button>
                                         </div>
                                         <div class="slider-control">
                                             <input type="number" class="cc-input" id="sliderCC1" min="0" max="127" value="0">
+                                            <input type="text" class="cc-input" id="sliderCh1" placeholder="-" title="Slider B channel (blank = inherit from bank/global)" style="font-size:11px;">
                                             <button type="button" class="slider-learn-btn" data-slider="1">Learn</button>
                                         </div>
                                         <div class="slider-control">
                                             <input type="number" class="cc-input" id="sliderCC2" min="0" max="127" value="0">
+                                            <input type="text" class="cc-input" id="sliderCh2" placeholder="-" title="Slider C channel (blank = inherit from bank/global)" style="font-size:11px;">
                                             <button type="button" class="slider-learn-btn" data-slider="2">Learn</button>
                                         </div>
                                         <div class="slider-control">
                                             <input type="number" class="cc-input" id="sliderCC3" min="0" max="127" value="0">
+                                            <input type="text" class="cc-input" id="sliderCh3" placeholder="-" title="Slider D channel (blank = inherit from bank/global)" style="font-size:11px;">
                                             <button type="button" class="slider-learn-btn" data-slider="3">Learn</button>
                                         </div>
                                     </div>
@@ -761,9 +768,11 @@
             <button class="modal-close" onclick="closeHelpModal()">&times;</button>
 
             <h3>Settings Cascade</h3>
-            <p>Channel(s) and message type inherit downward. You only need to set the global level unless you want per-page or per-bank differences. Check "Inherit" on a bank or page to use the parent value.</p>
+            <p>Channel(s) and message type inherit downward. You only need to set the global level unless you want per-page, per-bank, or per-slider differences.</p>
             <div style="display:flex;align-items:flex-start;justify-content:center;gap:0;margin:10px 0 14px;font-size:13px;color:#2a3a5a;">
-                <div style="text-align:center;"><strong>Bank</strong><br><span style="font-size:10px;color:#7a8aaa;">most specific</span></div>
+                <div style="text-align:center;"><strong>Slider Ch</strong><br><span style="font-size:10px;color:#7a8aaa;">most specific</span></div>
+                <span style="padding:2px 10px 0;color:#7a8aaa;">&rarr;</span>
+                <strong style="padding-top:2px;">Bank</strong>
                 <span style="padding:2px 10px 0;color:#7a8aaa;">&rarr;</span>
                 <strong style="padding-top:2px;">Page</strong>
                 <span style="padding:2px 10px 0;color:#7a8aaa;">&rarr;</span>
@@ -777,7 +786,7 @@
             <p>Each page has 4 banks — press a device button (or click one in the UI) to select one. Each bank stores its own CC values for all 4 sliders and can optionally override the page's channel(s) and type. When no bank is selected, the "Global" CC values are used. Double-press a button to lock that bank so it stays active after release.</p>
 
             <h3>Sliders (A–D)</h3>
-            <p>Each slider sends a MIDI message using its assigned CC number (0–127). The number fields below the device visual set the CC number per slider. Moving a physical slider highlights the corresponding field in the UI.</p>
+            <p>Each slider sends a MIDI message using its assigned CC number (0–127). The CC number fields below the device visual set the CC number per slider. The <strong>Ch</strong> fields next to them set a per-slider channel override — leave blank to inherit from the bank, page, or global channel. Moving a physical slider highlights the corresponding field in the UI.</p>
 
             <h3>Channel(s)</h3>
             <p>Set the MIDI channel (1–16) messages are sent on. For <strong>multiple channels</strong> simultaneously, separate with a pipe: <code style="background:#f0efe9;padding:1px 4px;border:1px solid #b0bcd0;">1|2|5</code>. Useful for controlling parameters across several instruments at once.</p>
@@ -787,7 +796,7 @@
             <strong>AT</strong> — Channel Aftertouch. Sends slider value as pressure on the selected channel(s); CC number is ignored.</p>
 
             <h3>MIDI Learn</h3>
-            <p>Click <strong>Learn</strong> beneath a slider, then send a CC from your DAW or controller — the incoming CC number is assigned to that slider. Enable the <strong>"Learn Ch"</strong> checkbox (bottom-left) to also apply the incoming channel to the current bank or global channel(s). Times out after 30 seconds.</p>
+            <p>Click <strong>Learn</strong> beneath a slider, then send a CC from your DAW or controller — the incoming CC number is assigned to that slider. Enable the <strong>"Learn Ch"</strong> checkbox (bottom-left) to also set that slider's individual channel from the incoming message. Times out after 30 seconds.</p>
 
             <h3>Saving</h3>
             <p>Click <strong>Save Settings</strong> to write to the device. <strong>Unplug and re-plug</strong> for changes to take effect.</p>
@@ -831,6 +840,67 @@
         const settingsForm = document.getElementById('settingsForm');
         const loadingMsg = document.getElementById('loadingMsg');
         const toast = document.getElementById('toast');
+
+        let firmwareCaps = {
+            per_slider_channels: false,
+            protocol_version: 0,
+            probed: false,
+        };
+
+        function supportsPerSliderChannels() {
+            return firmwareCaps.per_slider_channels === true;
+        }
+
+        function removePerSliderChannelKeys() {
+            if (!settings) return;
+            delete settings.GLOBAL_SLIDER_CHANNELS;
+            for (let pageNum = 1; pageNum <= 4; pageNum++) {
+                delete settings[`PAGE_${pageNum}_BANK_SLIDER_CHANNELS`];
+            }
+        }
+
+        function applyFirmwareCapabilities(capsResponse) {
+            const caps = (capsResponse && capsResponse.capabilities) ? capsResponse.capabilities : {};
+            firmwareCaps = {
+                per_slider_channels: !!caps.per_slider_channels,
+                protocol_version: (capsResponse && capsResponse.protocol_version) ? capsResponse.protocol_version : 0,
+                probed: true,
+            };
+
+            const enabled = supportsPerSliderChannels();
+            const sliderChRowLabel = document.getElementById('sliderChRowLabel');
+            const learnChannelWrap = document.getElementById('learnChannelWrap');
+            const learnChannel = document.getElementById('learnChannel');
+
+            if (sliderChRowLabel) sliderChRowLabel.style.display = enabled ? '' : 'none';
+            if (learnChannelWrap) learnChannelWrap.style.display = enabled ? '' : 'none';
+
+            if (learnChannel) {
+                if (!enabled) learnChannel.checked = false;
+                learnChannel.disabled = !enabled;
+            }
+
+            for (let i = 0; i < 4; i++) {
+                const sliderChInput = document.getElementById('sliderCh' + i);
+                if (!sliderChInput) continue;
+                sliderChInput.style.display = enabled ? '' : 'none';
+                sliderChInput.disabled = !enabled;
+                if (!enabled) sliderChInput.value = '';
+            }
+
+            if (!enabled) removePerSliderChannelKeys();
+            if (settings) loadCurrentCCValues();
+        }
+
+        function markLegacyFirmwareCapabilities() {
+            applyFirmwareCapabilities({
+                protocol_version: 0,
+                capabilities: { per_slider_channels: false }
+            });
+        }
+
+        // Default to the legacy-safe UI until firmware capabilities are detected.
+        markLegacyFirmwareCapabilities();
 
         let bannerTimeout = null;
         function showToast(message, type = 'success', duration = 3000) {
@@ -898,7 +968,9 @@
         function handleLearnedCC(sliderIdx, ccNumber, channel) {
             document.getElementById('sliderCC' + sliderIdx).value = ccNumber;
             if (document.getElementById('learnChannel').checked) {
-                if (currentBank === -1) {
+                if (supportsPerSliderChannels()) {
+                    document.getElementById('sliderCh' + sliderIdx).value = channel;
+                } else if (currentBank === -1) {
                     document.getElementById('globalChannel').value = channel;
                 } else {
                     const inheritCheckbox = document.getElementById('rowInherit' + currentBank);
@@ -967,6 +1039,27 @@
             }
             for (let i = 0; i < 4; i++) document.getElementById('sliderCC' + i).value = ccValues[i];
 
+            // Load per-slider channel overrides only when supported by firmware
+            if (supportsPerSliderChannels()) {
+                if (currentBank === -1) {
+                    const gsc = settings.GLOBAL_SLIDER_CHANNELS || ['', '', '', ''];
+                    for (let i = 0; i < 4; i++) {
+                        document.getElementById('sliderCh' + i).value = gsc[i] || '';
+                    }
+                } else {
+                    const bscKey = `PAGE_${currentPage + 1}_BANK_SLIDER_CHANNELS`;
+                    const bsc = settings[bscKey];
+                    const bankRow = (bsc && bsc[currentBank]) ? bsc[currentBank] : ['', '', '', ''];
+                    for (let i = 0; i < 4; i++) {
+                        document.getElementById('sliderCh' + i).value = bankRow[i] || '';
+                    }
+                }
+            } else {
+                for (let i = 0; i < 4; i++) {
+                    document.getElementById('sliderCh' + i).value = '';
+                }
+            }
+
             const bankChKey = `PAGE_${currentPage + 1}_BANK_CHANNELS`;
             const bankTyKey = `PAGE_${currentPage + 1}_BANK_TYPES`;
             const bankChannels = settings[bankChKey] || ['', '', '', ''];
@@ -1013,6 +1106,26 @@
                 if (!settings[pageKey]) settings[pageKey] = [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]];
                 settings[pageKey][currentBank] = ccValues;
             }
+
+            // Save per-slider channel overrides only when supported by firmware
+            if (supportsPerSliderChannels()) {
+                if (currentBank === -1) {
+                    if (!settings.GLOBAL_SLIDER_CHANNELS) settings.GLOBAL_SLIDER_CHANNELS = ['', '', '', ''];
+                    for (let i = 0; i < 4; i++) {
+                        settings.GLOBAL_SLIDER_CHANNELS[i] = document.getElementById('sliderCh' + i).value;
+                    }
+                } else {
+                    const bscKey = `PAGE_${currentPage + 1}_BANK_SLIDER_CHANNELS`;
+                    if (!settings[bscKey]) settings[bscKey] = [['','','',''],['','','',''],['','','',''],['','','','']];
+                    if (!settings[bscKey][currentBank]) settings[bscKey][currentBank] = ['', '', '', ''];
+                    for (let i = 0; i < 4; i++) {
+                        settings[bscKey][currentBank][i] = document.getElementById('sliderCh' + i).value;
+                    }
+                }
+            } else {
+                removePerSliderChannelKeys();
+            }
+
             const bankChKey = `PAGE_${currentPage + 1}_BANK_CHANNELS`;
             const bankTyKey = `PAGE_${currentPage + 1}_BANK_TYPES`;
             if (!settings[bankChKey]) settings[bankChKey] = ['', '', '', ''];
@@ -1068,6 +1181,7 @@
 
         async function connect() {
             try {
+                markLegacyFirmwareCapabilities();
                 port = await navigator.serial.requestPort();
                 await port.open({ baudRate: 115200 });
                 writer = port.writable.getWriter();
@@ -1079,6 +1193,7 @@
                 readLoop();
                 setTimeout(() => sendCommand('PING'), 500);
                 setTimeout(() => sendCommand('SET_CONFIG_MODE|1'), 600);
+                setTimeout(() => sendCommand('GET_CAPS'), 900);
                 setTimeout(() => sendCommand('GET_SETTINGS'), 1000);
                 statusPollInterval = setInterval(() => sendCommand('GET_STATUS'), 100);
                 pingInterval = setInterval(() => sendCommand('PING'), 2000);
@@ -1099,6 +1214,8 @@
                 settingsForm.classList.remove('loaded');
                 loadingMsg.style.display = 'block';
                 document.querySelector('.instructions').classList.remove('hidden');
+                settings = null;
+                markLegacyFirmwareCapabilities();
             } catch (err) { console.error('Disconnect error:', err); }
         }
 
@@ -1124,9 +1241,18 @@
         }
 
         function handleResponse(data) {
-            if (data.error) { showToast('Error: ' + data.error, 'error'); return; }
+            if (data.error) {
+                const errText = String(data.error);
+                if (errText.indexOf('Unknown command: GET_CAPS') !== -1) {
+                    markLegacyFirmwareCapabilities();
+                    return;
+                }
+                showToast('Error: ' + data.error, 'error');
+                return;
+            }
             if (data.device === 'lumafader') return;
             if (data.status === 'ok') return;
+            if (data.type === 'caps') { applyFirmwareCapabilities(data); return; }
             if (data.type === 'status') { handleStatus(data); return; }
             if (data.type === 'learn_started') { learnModeSlider = data.slider; updateLearnButtonStates(); return; }
             if (data.type === 'learned') { handleLearnedCC(data.slider, data.cc, data.channel); learnModeSlider = -1; updateLearnButtonStates(); return; }
@@ -1147,6 +1273,7 @@
             saveCurrentCCValues();
             settings.GLOBAL_CHANNEL = document.getElementById('globalChannel').value;
             settings.GLOBAL_MESSAGE_TYPE = document.getElementById('globalType').value;
+            if (!supportsPerSliderChannels()) removePerSliderChannelKeys();
             delete settings._help;
             return settings;
         }
