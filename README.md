@@ -59,7 +59,7 @@ For example you can set `GLOBAL_CHANNEL`1` to `"1|2|3|4"`
 
 The boot button is on the bottom PCB. See the image below for where it is located. I usually just stick a screwdriver through the hole in the case for the USB and use that to press the button. Alternaltivly you can take the top panel off with an m3 hex key.
 
-<img width="450" height="1246" alt="Show Boot Button" src="https://github.com/user-attachments/assets/2fdeeb8c-3297-4982-aabe-627f1dcd7ce0" />
+<img width="450" height="" alt="Show Boot Button" src="https://github.com/user-attachments/assets/2fdeeb8c-3297-4982-aabe-627f1dcd7ce0" />
 
 ### Steps
 
