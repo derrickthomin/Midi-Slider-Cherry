@@ -72,3 +72,8 @@ The boot button is on the bottom PCB. See the image below for where it is locate
 4. **Copy source files:** Copy the entire contents of the `src/` folder onto the **CIRCUITPY** drive. This includes all `.py` files, `settings.json`, and the `lib/` folder. Overwrite if prompted.
 
 5. **Done.** Unplug the LumaFader and plug it back in.
+
+
+## Alternate Firmware
+Note that I have not personally used or tested these unless otherwise noted, so use at your own risk. You can always re-flash the original firmware if needed.
+- If you are a BitWig user, check out this sweet project by @Naenyn! https://github.com/Naenyn/LumaFader-Bitwig
