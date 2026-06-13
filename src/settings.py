@@ -12,6 +12,13 @@ class Settings:
     
     # Valid message types
     VALID_MESSAGE_TYPES = ("CC", "AT")  # CC = Control Change, AT = Channel Aftertouch
+
+    # Record Mode defaults ("oneshot" is intentionally not supported)
+    VALID_LOOP_TYPES = ("loop", "hold")
+    DEFAULT_LOOP_TYPE = "loop"
+    DEFAULT_CC_RESOLUTION = 0   # 0 = record every change that was actually sent
+    DEFAULT_TRIM_SILENCE = True
+    DEFAULT_CC_RESET = True
     
     # Default per-slider channel overrides (empty = inherit)
     DEFAULT_GLOBAL_SLIDER_CHANNELS = ["", "", "", ""]
@@ -224,6 +231,10 @@ class Settings:
             "PAGE_2_BANK_TYPES": None,
             "PAGE_3_BANK_TYPES": None,
             "PAGE_4_BANK_TYPES": None,
+            "LOOP_TYPE": self.DEFAULT_LOOP_TYPE,
+            "CC_RESOLUTION": self.DEFAULT_CC_RESOLUTION,
+            "TRIM_SILENCE": self.DEFAULT_TRIM_SILENCE,
+            "CC_RESET": self.DEFAULT_CC_RESET,
         }
     
     def _is_empty_or_null(self, val):
@@ -658,6 +669,66 @@ class Settings:
                         return parsed
         # Fall back to bank-level channel resolution
         return self.get_resolved_channels(page_idx, bank_idx)
+
+    # ==================== Record Mode Methods ====================
+
+    def get_loop_type(self):
+        """
+        Get the default loop type for new Record Mode loops.
+        Falls back to "loop" if invalid or missing.
+
+        Returns:
+            str: "loop" or "hold"
+        """
+        val = self.settings.get("LOOP_TYPE", self.DEFAULT_LOOP_TYPE)
+        if val in self.VALID_LOOP_TYPES:
+            return val
+        return self.DEFAULT_LOOP_TYPE
+
+    def get_cc_resolution(self):
+        """
+        Get the Record Mode CC resolution: the minimum value delta required to
+        record an event. 0 = record every change that was actually sent.
+        Falls back to 0 if invalid or missing.
+
+        Returns:
+            int: 0-127
+        """
+        val = self.settings.get("CC_RESOLUTION", self.DEFAULT_CC_RESOLUTION)
+        if isinstance(val, str) and val.isdigit():
+            val = int(val)
+        if isinstance(val, bool) or not isinstance(val, int):
+            return self.DEFAULT_CC_RESOLUTION
+        if 0 <= val <= 127:
+            return val
+        return self.DEFAULT_CC_RESOLUTION
+
+    def get_trim_silence(self):
+        """
+        Get the Record Mode trim-silence setting (start-trim only): when True,
+        leading silence is removed so the loop starts on the first fader movement.
+
+        Returns:
+            bool
+        """
+        val = self.settings.get("TRIM_SILENCE", self.DEFAULT_TRIM_SILENCE)
+        if isinstance(val, bool):
+            return val
+        return self.DEFAULT_TRIM_SILENCE
+
+    def get_cc_reset(self):
+        """
+        Get the Record Mode CC reset ("bounce back") setting: when True,
+        stopping a loop re-sends the last live fader values for the (CC, channel)
+        pairs the loop recorded.
+
+        Returns:
+            bool
+        """
+        val = self.settings.get("CC_RESET", self.DEFAULT_CC_RESET)
+        if isinstance(val, bool):
+            return val
+        return self.DEFAULT_CC_RESET
 
 
 # Create a singleton instance

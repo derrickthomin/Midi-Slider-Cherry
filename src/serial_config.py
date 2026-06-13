@@ -150,6 +150,7 @@ class SerialConfigHandler:
                     "protocol_version": SERIAL_PROTOCOL_VERSION,
                     "capabilities": {
                         "per_slider_channels": True,
+                        "record_mode": True,
                     }
                 })
             

@@ -31,6 +31,15 @@ ADAPTIVE_RAW_TO_CC_DIVISOR = 512  # 65536 / 128 = 512 (ADC range / CC range)
 MIN_CC_VALUE = 0
 MAX_CC_VALUE = 127
 
+# Record Mode (firmware constants, not settings)
+RECORD_MODE_HOLD_S = 3.0        # Hold all four buttons this long to toggle Record Mode
+RECORD_MODE_HOLD_STEP_S = 0.75  # One button pixel of red fill per step (4 * 0.75 = 3.0)
+DELETE_CONFIRM_WINDOW_S = 1.5   # Armed delete cancels after this long with no confirm
+MAX_LOOP_EVENTS = 512           # Per-loop CC/AT event cap (Loopster CC_RAM_LIMIT)
+MAX_LOOP_MS = 60000             # Per-loop length cap (forced by 'H' array timestamp width)
+MEMORY_CRITICAL_THRESHOLD = 10000  # gc.mem_free() floor; recording auto-stops below this
+NUM_RECORD_CC_SETS = 5          # global bank + page 1's 4 banks
+
 # Global CC Bank and Pages from settings
 GLOBAL_CC_BANK = settings.get_global_cc_bank()
 PAGES = settings.get_all_pages()
@@ -40,6 +49,13 @@ GLOBAL_BANK_COLOR = (200, 155, 55)  # A separate color for the global bank
 JUMP_MODE_COLOR = (255, 165, 0)     # Orange for jump mode
 REG_MODE_COLOR = (0, 255, 0)        # Green for regular mode
 PAGE_INDICATOR_COLOR = (255, 255, 255)  # White for page indicator
+
+# Record Mode colors / timing
+RECORD_RECORDING_COLOR = (255, 0, 0)   # Solid red while recording (also hold-fill color)
+RECORD_PLAYING_COLOR = (0, 255, 0)     # Green while a loop plays
+RECORD_DELETE_BLINK_S = 0.15           # Delete-armed red blink phase length
+RECORD_SET_FLASH_S = 0.25              # CC-set switch white flash duration
+RECORD_SET_FLASH_COLOR = (255, 255, 255)
 
 COLORS = {
     "WHITE": (255, 255, 255),

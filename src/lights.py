@@ -240,6 +240,75 @@ class LightsManager:
             else:
                 self.pixels[pix_idx] = (0, 0, 0)
 
+    def update_record_mode_buttons(self, slot_states, set_flash=-1):
+        """
+        Draws the Record Mode loop-slot states on the button pixels (replaces
+        update_buttons/indicate_locked_bank while Record Mode is active).
+
+        Args:
+            slot_states (list): 4 (state, color) tuples from
+                controller.get_record_slot_states(). States: "empty",
+                "recording", "playing", "stopped", "delete_armed"; color is the
+                bank color for "stopped" slots.
+            set_flash (int): CC set index to flash after a set switch
+                (-1 = no flash). Sets 1-4 flash button pixel N-1 white;
+                set 0 briefly blanks all four button pixels.
+        """
+        now = time.monotonic()
+        for idx, (state, color) in enumerate(slot_states):
+            pixel_index = self.button_pixel_indices[idx]
+            if state == "recording":
+                self.pixels[pixel_index] = cfg.RECORD_RECORDING_COLOR
+            elif state == "delete_armed":
+                blink_on = int(now / cfg.RECORD_DELETE_BLINK_S) % 2 == 0
+                self.pixels[pixel_index] = cfg.RECORD_RECORDING_COLOR if blink_on else (0, 0, 0)
+            elif state == "playing":
+                self.pixels[pixel_index] = cfg.RECORD_PLAYING_COLOR
+            elif state == "stopped":
+                self.pixels[pixel_index] = color if color is not None else (0, 0, 0)
+            else:  # empty
+                self.pixels[pixel_index] = (0, 0, 0)
+
+        # CC-set switch confirmation flash (overlays the slot states)
+        if set_flash == 0:
+            for idx in range(4):
+                self.pixels[self.button_pixel_indices[idx]] = (0, 0, 0)
+        elif set_flash > 0:
+            self.pixels[self.button_pixel_indices[set_flash - 1]] = cfg.RECORD_SET_FLASH_COLOR
+
+    def update_mode_hold_progress(self, pixels_lit):
+        """
+        Overlays the hold-all-four-buttons progress fill: button pixels fill
+        red one at a time, bottom to top. Draw after the normal button-pixel
+        pass in either mode.
+
+        Args:
+            pixels_lit (int): Number of pixels to light (0-4).
+        """
+        for idx in range(min(pixels_lit, 4)):
+            self.pixels[self.button_pixel_indices[idx]] = cfg.RECORD_RECORDING_COLOR
+
+    def record_mode_toggle_animation(self, entering):
+        """
+        Brief blocking confirmation animation when Record Mode toggles
+        (~300 ms): a red sweep up the button pixels on enter, down on exit.
+
+        Args:
+            entering (bool): True if Record Mode was just entered.
+        """
+        order = [0, 1, 2, 3] if entering else [3, 2, 1, 0]
+        for idx in range(4):
+            self.pixels[self.button_pixel_indices[idx]] = (0, 0, 0)
+        self.pixels.show()
+        for idx in order:
+            self.pixels[self.button_pixel_indices[idx]] = cfg.RECORD_RECORDING_COLOR
+            self.pixels.show()
+            time.sleep(0.06)
+        time.sleep(0.06)
+        for idx in range(4):
+            self.pixels[self.button_pixel_indices[idx]] = (0, 0, 0)
+        self.pixels.show()
+
     def indicate_jump_mode(self, enabled):
         """
         Lights up the indicator pixel to show jump mode status.

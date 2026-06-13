@@ -70,7 +70,10 @@ def copy_src_files():
                 print(f"  Copying files to {target}...")
                 count = 0
                 for root, dirs, files in os.walk(SRC_FOLDER_FP):
+                    dirs[:] = [d for d in dirs if d != '__pycache__']
                     for f in files:
+                        if f == '__pycache__':
+                            continue
                         src_file = os.path.join(root, f)
                         rel_path = os.path.relpath(src_file, SRC_FOLDER_FP)
                         dst_file = os.path.join(target, rel_path)

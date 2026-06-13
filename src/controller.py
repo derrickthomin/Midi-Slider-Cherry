@@ -2,6 +2,8 @@ import time
 from inputs import MidiSlider, BankButton
 from midi import midi_manager
 from settings import settings
+from loopmanager import (LoopManager, SLOT_EMPTY, SLOT_RECORDING,
+                         SLOT_PLAYING, SLOT_STOPPED)
 import constants as cfg
 
 class MidiController:
@@ -51,6 +53,46 @@ class MidiController:
         # Config mode: single click locks banks (for web config interface)
         self.config_mode = False
 
+        # ==================== Record Mode state ====================
+        self.record_mode_active = False
+        self.record_mode_just_toggled = False  # code.py plays the enter/exit animation, then clears
+        self.record_cc_set_idx = 0  # 0 = global bank, 1-4 = page 1 banks (separate from page/bank state, gotcha 9.3)
+        self.loop_manager = LoopManager()
+
+        # Hold-all-four-buttons mode-toggle detection
+        self._mode_hold_start = 0     # time.monotonic() when all four went down; 0 = not armed
+        self._mode_hold_fired = False  # toggled already on this hold; waiting for releases
+
+        # One-shot release suppression: a button's next release fires no gesture/slot
+        # action (mode-toggle participants, set-navigation held button, etc.)
+        self._suppress_release = [False] * 4
+
+        # Per-slot click state machine (release-based; gotcha 9.1 - don't use
+        # BankButton.was_double_pressed for click counting)
+        self._slot_last_press_time = [0.0] * 4
+        self._slot_pending_record = [False] * 4    # start recording on this button's next release
+        self._slot_prev_play_state = [False] * 4   # play state at first press of a pair (delete restore)
+        self._slot_ignore_press_until = [0.0] * 4  # swallow presses right after a stop-recording click
+
+        # Delete arm/confirm state
+        self._delete_armed_slot = -1
+        self._delete_armed_time = 0.0
+        self._delete_restore_play = False
+
+        # Record-mode CC-set navigation (mirrors normal-mode page change)
+        self._rec_nav_active = False
+        self._rec_nav_exit_button_idx = -1
+
+        # CC-set switch white flash (optional polish, 3d)
+        self._set_flash_time = 0.0
+        self._set_flash_set_idx = -1
+
+        # Live-values cache for cc_reset (3e): last value live-sent by the
+        # physical faders, per (cc, ch) / per ch. Updated only on fader-origin
+        # sends (both modes), never by the playback pump.
+        self._last_live_cc_values = {}  # {(cc_number, channel): value}
+        self._last_live_at_values = {}  # {channel: pressure}
+
         # Setup
         self.setup_sliders()
         self.setup_buttons()
@@ -86,8 +128,26 @@ class MidiController:
         """
         Processes input changes. Determines if any bank/bank-group changes are needed.
         Also checks if Jump Mode should toggle based on button events.
+        In Record Mode, button events drive the loop slots instead (gestures branch).
         """
+        # Record-mode machinery is time-based (hold timer, delete window,
+        # playback pump) and must run every iteration, even with no input
+        # changes (gotcha 9.1).
+        self.update_record_mode_state()
+
         if not self.has_anything_changed:
+            return
+
+        # Consume one-shot release suppressions (mode-toggle hold and
+        # set-navigation participants): these releases fire nothing in either mode.
+        swallowed = [False] * 4
+        for idx, button in enumerate(self.buttons):
+            if button.detected_new_release and self._suppress_release[idx]:
+                self._suppress_release[idx] = False
+                swallowed[idx] = True
+
+        if self.record_mode_active:
+            self.process_record_mode_inputs(swallowed)
             return
 
         self.handle_lock_changes()
@@ -99,12 +159,12 @@ class MidiController:
 
         top_hold_time = top_button.hold_time
         top_was_long_held = top_button.was_long_held
-        top_new_release = top_button.detected_new_release
+        top_new_release = top_button.detected_new_release and not swallowed[3]
         top_new_press = top_button.detected_new_press
 
         bottom_hold_time = bottom_button.hold_time
         bottom_was_long_held = bottom_button.was_long_held
-        bottom_new_release = bottom_button.detected_new_release
+        bottom_new_release = bottom_button.detected_new_release and not swallowed[0]
         bottom_new_press = bottom_button.detected_new_press
         
         # Check if middle buttons are held (prevents bank switch when multi-bank holding)
@@ -275,9 +335,11 @@ class MidiController:
                     if main_type == "AT":
                         midi_manager.send_aftertouch(main_channels, slider.cc_value,
                                                       slider_idx, self.current_page_idx, main_bank_idx)
+                        self._update_live_at_cache(main_channels, slider.cc_value)
                     else:
                         cc_with_channels = [(slider.current_assigned_cc_number, ch) for ch in main_channels]
                         midi_manager.send_cc(cc_with_channels, slider.cc_value)
+                        self._update_live_cc_cache(slider.current_assigned_cc_number, main_channels, slider.cc_value)
 
                     # Process each additional bank according to its own type
                     for i, add_cc in enumerate(slider.additional_assigned_cc_numbers):
@@ -288,36 +350,52 @@ class MidiController:
                         if add_type == "AT":
                             midi_manager.send_aftertouch(add_channels, slider.cc_value,
                                                           slider_idx, self.current_page_idx, bank_idx)
+                            self._update_live_at_cache(add_channels, slider.cc_value)
                         else:
                             cc_with_channels = [(add_cc, ch) for ch in add_channels]
                             midi_manager.send_cc(cc_with_channels, slider.cc_value)
+                            self._update_live_cc_cache(add_cc, add_channels, slider.cc_value)
 
                     slider.cc_value_changed = False
 
-    def should_send_cc(self, slider, slider_idx, channel, message_type="CC", bank_idx=-1):
+    def _update_live_cc_cache(self, cc_number, channels, value):
+        """Track the last value live-sent by the physical faders per (cc, channel).
+        Feeds the cc_reset scan (3e). Never called from the playback pump."""
+        for channel in channels:
+            self._last_live_cc_values[(cc_number, channel)] = value
+
+    def _update_live_at_cache(self, channels, pressure):
+        for channel in channels:
+            self._last_live_at_values[channel] = pressure
+
+    def should_send_cc(self, slider, slider_idx, channel, message_type="CC", bank_idx=-1, page_idx=None):
         """
         Determines whether a MIDI message should be sent based on pickup mode logic.
-        
-        This method implements "pickup mode" where sliders only send values after 
+
+        This method implements "pickup mode" where sliders only send values after
         physically crossing the last sent value, preventing sudden jumps in parameter values.
-        
+
         Args:
             slider (MidiSlider): The slider object to check
             slider_idx (int): Index of the slider (0-3)
             channel (int): The MIDI channel (0-indexed) for this slider's current bank
             message_type (str): "CC" for Control Change, "AT" for Channel Aftertouch
             bank_idx (int): Bank index (-1 for global, 0-3 for banks)
-            
+            page_idx (int): Page index for AT per-slider tracking; None = current page
+                (Record Mode passes 0 since its sets all live on page 1)
+
         Returns:
             bool: True if a message should be sent, False otherwise
         """
         cc_number = slider.current_assigned_cc_number
         cc_value = slider.cc_value
-        
+        if page_idx is None:
+            page_idx = self.current_page_idx
+
         # Get last sent value based on message type
         # For AT, use per-slider tracking for independent pickup behavior
         if message_type == "AT":
-            last_cc_sent = midi_manager.get_last_at_value_per_slider(slider_idx, self.current_page_idx, bank_idx)
+            last_cc_sent = midi_manager.get_last_at_value_per_slider(slider_idx, page_idx, bank_idx)
         else:
             last_cc_sent = midi_manager.get_last_cc_value_sent(cc_number, channel)
 
@@ -607,3 +685,496 @@ class MidiController:
             'blink_button_idx': blink_button_idx,
             'blink_off': blink_off
         }
+
+    # ==================== Record Mode ====================
+
+    def update_record_mode_state(self):
+        """
+        Time-based Record Mode machinery, run every main-loop iteration
+        regardless of input changes: the hold-all-four toggle timer, the
+        delete-confirm window, recording caps, and the playback pump.
+        """
+        now = time.monotonic()
+
+        # Web config mode and Record Mode are mutually exclusive (gotcha 9.11)
+        if self.config_mode and self.record_mode_active:
+            self._toggle_record_mode()
+
+        self._update_mode_hold(now)
+
+        if self.record_mode_active:
+            self._update_delete_arm_timeout(now)
+            # Hitting an event/memory/time cap auto-stops the recording
+            # exactly like a manual stop.  Apply the same post-stop ignore
+            # window as a manual stop so a click racing the cap can't pair
+            # into a double-press and arm delete on the brand-new loop (3b).
+            auto_stopped = self.loop_manager.check_recording_limits()
+            if auto_stopped >= 0:
+                self._slot_ignore_press_until[auto_stopped] = now + cfg.DOUBLE_PRESS_TIME
+                self._slot_last_press_time[auto_stopped] = 0.0
+            self.process_loop_playback()
+
+    def _update_mode_hold(self, now):
+        """Detect the hold-all-four-buttons-for-3s Record Mode toggle."""
+        if not all(button.pressed for button in self.buttons):
+            self._mode_hold_start = 0
+            self._mode_hold_fired = False
+            return
+
+        if self.config_mode:
+            # All-four hold is ignored while the web config is connected
+            self._mode_hold_start = 0
+            return
+
+        if self._mode_hold_fired:
+            return  # Already toggled on this hold; waiting for the releases
+
+        if self._mode_hold_start == 0:
+            self._mode_hold_start = now
+            # All four buttons participate in the hold: their releases must
+            # not leak into either mode's gestures (suppression rule c, 3b) -
+            # this also covers the jump-mode combo an aborted hold would match.
+            for idx in range(4):
+                self._suppress_release[idx] = True
+            self._reset_slot_click_state()
+        elif now - self._mode_hold_start >= cfg.RECORD_MODE_HOLD_S:
+            self._mode_hold_fired = True
+            self._toggle_record_mode()
+
+    @property
+    def mode_hold_pixels_lit(self):
+        """How many button pixels of red hold-progress fill to show (0-4)."""
+        if self._mode_hold_start == 0 or self._mode_hold_fired:
+            return 0
+        elapsed = time.monotonic() - self._mode_hold_start
+        pixels_lit = int(elapsed / cfg.RECORD_MODE_HOLD_STEP_S)
+        return min(pixels_lit, 4)
+
+    def _toggle_record_mode(self):
+        if self.record_mode_active:
+            self._exit_record_mode()
+        else:
+            self._enter_record_mode()
+        self.record_mode_just_toggled = True
+
+        # Hard-reset normal-mode gesture state so the trailing releases land
+        # clean in the other mode (gotcha 9.2)
+        self.unlock_bank()
+        self.held_button_order = []
+        self.primary_bank_idx = -1
+        self.additional_bank_indicies = []
+        self.unlock_pending = False
+        self.page_change_mode_active = False
+        self.page_change_exit_button_idx = -1
+        self.page_limit_blink_idx = -1
+        self.page_limit_blink_locked = False
+        self.page_just_changed = False
+
+        # Reset record-mode gesture state
+        self._reset_slot_click_state()
+        self._rec_nav_active = False
+        self._rec_nav_exit_button_idx = -1
+        self._set_flash_set_idx = -1
+
+    def _enter_record_mode(self):
+        self.record_mode_active = True
+        self.record_cc_set_idx = 0  # Always start in the global set
+        self.update_record_slider_assignments()
+
+    def _exit_record_mode(self):
+        """Exit Record Mode (3a): finalize any recording, cancel an armed
+        delete (loop kept, left stopped), stop all loops (they stay in RAM)."""
+        self.record_mode_active = False
+
+        if self.loop_manager.is_recording:
+            self.loop_manager.stop_recording()
+
+        self._cancel_delete_arm(restore=False)
+
+        for slot_idx in range(4):
+            self._stop_loop_with_reset(slot_idx)
+
+        # Normal-mode page/bank state was never touched (gotcha 9.3); just
+        # restore the sliders' normal CC assignments and pickup tracking.
+        self.update_slider_cc_assignments()
+
+    def _reset_slot_click_state(self):
+        for idx in range(4):
+            self._slot_last_press_time[idx] = 0.0
+            self._slot_pending_record[idx] = False
+            self._slot_prev_play_state[idx] = False
+            self._slot_ignore_press_until[idx] = 0.0
+
+    # -------------------- Record Mode input processing --------------------
+
+    def process_record_mode_inputs(self, swallowed):
+        """
+        Record-mode replacement for the normal gesture handling. All
+        normal-mode gestures are inert here except set navigation (3c).
+        """
+        # Exit set-navigation mode when its initiating button is released
+        # (mirrors page change mode)
+        if self._rec_nav_active:
+            if (self._rec_nav_exit_button_idx != -1
+                    and not self.buttons[self._rec_nav_exit_button_idx].pressed):
+                self._rec_nav_active = False
+                self._rec_nav_exit_button_idx = -1
+
+        if all(not button.pressed for button in self.buttons):
+            self._rec_nav_active = False
+            self._rec_nav_exit_button_idx = -1
+
+        # While the all-four mode-toggle hold is in progress, slot actions are
+        # inert but the faders keep sending (and recording)
+        if all(button.pressed for button in self.buttons):
+            self.send_record_mode_cc()
+            return
+
+        if self._handle_set_navigation(swallowed):
+            return
+
+        if not self._rec_nav_active:
+            # In rapid-stepping navigation mode, clicks are navigation only
+            self._process_slot_clicks(swallowed)
+        self.send_record_mode_cc()
+
+    def _handle_set_navigation(self, swallowed):
+        """
+        Step through the 5 CC sets with the page-change gesture (hold bottom +
+        click top = next, hold top + click bottom = previous), with wrap.
+        First step fires on release, subsequent steps on click while in
+        navigation mode - mirroring the normal-mode page-change structure.
+        Returns True if a navigation event was consumed.
+        """
+        top_button = self.buttons[3]
+        bottom_button = self.buttons[0]
+        middles_idle = not self.buttons[1].pressed and not self.buttons[2].pressed
+        only_bottom_held = bottom_button.pressed and not top_button.pressed and middles_idle
+        only_top_held = top_button.pressed and not bottom_button.pressed and middles_idle
+
+        # Next set (bottom held, top activated)
+        if bottom_button.hold_time > 0:
+            if self._rec_nav_active and top_button.detected_new_press:
+                self._cancel_slot_click(3)
+                self._step_record_set(1)
+                return True
+            if (not self._rec_nav_active and top_button.detected_new_release
+                    and not swallowed[3] and not top_button.was_long_held
+                    and only_bottom_held):
+                self._rec_nav_active = True
+                self._rec_nav_exit_button_idx = 0
+                self._suppress_release[0] = True  # held button's release fires nothing (rule b)
+                self._cancel_slot_click(0)
+                self._cancel_slot_click(3)
+                self._step_record_set(1)
+                return True
+
+        # Previous set (top held, bottom activated)
+        if top_button.hold_time > 0:
+            if self._rec_nav_active and bottom_button.detected_new_press:
+                self._cancel_slot_click(0)
+                self._step_record_set(-1)
+                return True
+            if (not self._rec_nav_active and bottom_button.detected_new_release
+                    and not swallowed[0] and not bottom_button.was_long_held
+                    and only_top_held):
+                self._rec_nav_active = True
+                self._rec_nav_exit_button_idx = 3
+                self._suppress_release[3] = True
+                self._cancel_slot_click(0)
+                self._cancel_slot_click(3)
+                self._step_record_set(-1)
+                return True
+
+        return False
+
+    def _cancel_slot_click(self, slot_idx):
+        """Remove a button's pending click state (it was used by another gesture)."""
+        self._slot_last_press_time[slot_idx] = 0.0
+        self._slot_pending_record[slot_idx] = False
+
+    def _step_record_set(self, direction):
+        self._cancel_delete_arm(restore=True)
+        self.record_cc_set_idx = (self.record_cc_set_idx + direction) % cfg.NUM_RECORD_CC_SETS
+        self.update_record_slider_assignments()
+        self._set_flash_set_idx = self.record_cc_set_idx
+        self._set_flash_time = time.monotonic()
+
+    def _record_set_lookup(self, slider_idx):
+        """
+        Resolve the active record CC set for one slider.
+        Set 0 = global bank; sets 1-4 = page 1's banks (page index 0 lookups).
+
+        Returns:
+            (cc_number, channels, message_type, bank_idx) - bank_idx is -1 for global.
+        """
+        set_idx = self.record_cc_set_idx
+        if set_idx == 0:
+            return (cfg.GLOBAL_CC_BANK[slider_idx],
+                    self.global_slider_channels[slider_idx],
+                    self.global_message_type,
+                    -1)
+        bank_idx = set_idx - 1
+        return (self.pages[0][bank_idx][slider_idx],
+                self.channel_lookup[0][bank_idx][slider_idx],
+                self.type_lookup[0][bank_idx],
+                bank_idx)
+
+    def update_record_slider_assignments(self):
+        """
+        Record-mode equivalent of update_slider_cc_assignments: assign each
+        slider's CC from the active set and reset pickup tracking. Run on every
+        set change, including Record Mode entry.
+        """
+        for idx, slider in enumerate(self.sliders):
+            cc_number, channels, message_type, bank_idx = self._record_set_lookup(idx)
+            slider.current_assigned_cc_number = cc_number
+            slider.additional_assigned_cc_numbers = []
+
+            if message_type == "AT":
+                last_sent = midi_manager.get_last_at_value_per_slider(idx, 0, bank_idx)
+            else:
+                last_sent = midi_manager.get_last_cc_value_sent(cc_number, channels[0])
+            slider.crossing_cc_value = last_sent
+
+            if abs(slider.cc_value - last_sent) <= cfg.CC_THRESHOLD:
+                slider.has_crossed_last_cc_value = True
+            else:
+                slider.has_crossed_last_cc_value = False
+            slider.cc_value_changed = False
+
+    # -------------------- Per-slot click state machine --------------------
+
+    def _process_slot_clicks(self, swallowed):
+        now = time.monotonic()
+        for idx, button in enumerate(self.buttons):
+            if button.detected_new_press:
+                self._handle_slot_press(idx, now)
+        for idx, button in enumerate(self.buttons):
+            if button.detected_new_release:
+                self._handle_slot_release(idx, button, swallowed[idx], now)
+
+    def _handle_slot_press(self, slot_idx, now):
+        # Presses within the double-press window after a stop-recording click
+        # are ignored - otherwise a bouncy stop click would arm delete on the
+        # brand-new loop (3b)
+        if now < self._slot_ignore_press_until[slot_idx]:
+            self._suppress_release[slot_idx] = True
+            self._slot_last_press_time[slot_idx] = 0.0
+            return
+
+        # Confirm delete: an explicit press on the armed slot within the window
+        if self._delete_armed_slot == slot_idx:
+            self._confirm_delete(slot_idx)
+            self._suppress_release[slot_idx] = True
+            self._slot_last_press_time[slot_idx] = 0.0
+            return
+
+        # Any other slot's action cancels an armed delete (restores play
+        # state); this press is then processed normally
+        if self._delete_armed_slot != -1:
+            self._cancel_delete_arm(restore=True)
+
+        is_double = (self._slot_last_press_time[slot_idx] > 0
+                     and (now - self._slot_last_press_time[slot_idx]) <= cfg.DOUBLE_PRESS_TIME)
+        self._slot_last_press_time[slot_idx] = now
+
+        if not is_double:
+            # First press of a potential pair: capture the play state for a
+            # possible delete-arm restore (before the first click toggles it)
+            loop = self.loop_manager.loops[slot_idx]
+            self._slot_prev_play_state[slot_idx] = bool(loop and loop.loop_is_playing)
+            return
+
+        # --- Double-press recognized (on the second press) ---
+        state = self.loop_manager.get_slot_state(slot_idx)
+        if state == SLOT_EMPTY:
+            # Start recording fires on the second release
+            self._slot_pending_record[slot_idx] = True
+        elif state in (SLOT_PLAYING, SLOT_STOPPED):
+            self._arm_delete(slot_idx, now)
+            self._suppress_release[slot_idx] = True  # second release fires nothing
+
+    def _handle_slot_release(self, slot_idx, button, was_swallowed, now):
+        # Suppression rules (3b): (c) mode-toggle/navigation participants...
+        if was_swallowed:
+            self._slot_pending_record[slot_idx] = False
+            self._slot_last_press_time[slot_idx] = 0.0
+            return
+        # ...and (a) long-held buttons
+        if button.was_long_held:
+            self._slot_pending_record[slot_idx] = False
+            self._slot_last_press_time[slot_idx] = 0.0
+            return
+
+        if self._slot_pending_record[slot_idx]:
+            self._slot_pending_record[slot_idx] = False
+            # Switching from another recording slot finalizes that recording
+            # first (inside LoopManager.start_recording)
+            self.loop_manager.start_recording(slot_idx, self.record_cc_set_idx)
+            # Ignore presses within the double-press window after starting a
+            # recording (symmetric with stop-recording, 3b) - prevents a bouncy
+            # third tap from immediately single-click stopping the new recording.
+            self._slot_ignore_press_until[slot_idx] = now + cfg.DOUBLE_PRESS_TIME
+            self._slot_last_press_time[slot_idx] = 0.0
+            return
+
+        # --- Single-click actions ---
+        state = self.loop_manager.get_slot_state(slot_idx)
+        if state == SLOT_RECORDING:
+            self.loop_manager.stop_recording()
+            self._slot_ignore_press_until[slot_idx] = now + cfg.DOUBLE_PRESS_TIME
+            self._slot_last_press_time[slot_idx] = 0.0
+        elif state == SLOT_PLAYING:
+            self._stop_loop_with_reset(slot_idx)
+        elif state == SLOT_STOPPED:
+            self.loop_manager.toggle_playstate(slot_idx, True)
+        # SLOT_EMPTY: no-op
+
+    # -------------------- Delete arm / confirm / cancel --------------------
+
+    def _arm_delete(self, slot_idx, now):
+        self._delete_armed_slot = slot_idx
+        self._delete_armed_time = now
+        # Restore target is the play state from before the first click of the
+        # pair (the first click's release already toggled it - accepted transient)
+        self._delete_restore_play = self._slot_prev_play_state[slot_idx]
+
+        loop = self.loop_manager.loops[slot_idx]
+        if loop is not None and loop.loop_is_playing:
+            self._stop_loop_with_reset(slot_idx)
+
+    def _cancel_delete_arm(self, restore=True):
+        if self._delete_armed_slot == -1:
+            return
+        slot_idx = self._delete_armed_slot
+        self._delete_armed_slot = -1
+        if restore and self._delete_restore_play and self.loop_manager.slot_has_loop(slot_idx):
+            self.loop_manager.toggle_playstate(slot_idx, True)
+
+    def _confirm_delete(self, slot_idx):
+        self._delete_armed_slot = -1
+        self.loop_manager.delete_loop(slot_idx)
+
+    def _update_delete_arm_timeout(self, now):
+        if (self._delete_armed_slot != -1
+                and now - self._delete_armed_time > cfg.DELETE_CONFIRM_WINDOW_S):
+            self._cancel_delete_arm(restore=True)
+
+    # -------------------- Sending / recording / playback --------------------
+
+    def send_record_mode_cc(self):
+        """
+        Record-mode fader output: same live send path as normal mode but with
+        the active CC set's lookups, plus the recording tap (9.5) - events go
+        both to MIDI out and into the recording loop, after the pickup check.
+        """
+        recording_loop = self.loop_manager.get_recording_loop()
+
+        for slider_idx, slider in enumerate(self.sliders):
+            if not slider.cc_value_changed:
+                continue
+
+            cc_number, channels, message_type, bank_idx = self._record_set_lookup(slider_idx)
+
+            if not self.should_send_cc(slider, slider_idx, channels[0], message_type,
+                                       bank_idx, page_idx=0):
+                continue
+
+            value = slider.cc_value
+            if message_type == "AT":
+                midi_manager.send_aftertouch(channels, value, slider_idx, 0, bank_idx)
+                self._update_live_at_cache(channels, value)
+                if recording_loop is not None:
+                    for channel in channels:
+                        recording_loop.add_aftertouch(value, channel)
+            else:
+                midi_manager.send_cc([(cc_number, ch) for ch in channels], value)
+                self._update_live_cc_cache(cc_number, channels, value)
+                if recording_loop is not None:
+                    for channel in channels:
+                        recording_loop.add_cc(cc_number, value, channel)
+
+            slider.cc_value_changed = False
+
+    def process_loop_playback(self):
+        """
+        Playback pump: collect due events from every slot and send them.
+        Safe to call unconditionally - stopped/recording loops return None.
+        Playback goes through midi_manager so its de-dupe and pickup state
+        stay consistent with reality (gotcha 9.6).
+        """
+        for loop in self.loop_manager.loops:
+            if loop is None:
+                continue
+            events = loop.get_new_events()
+            if not events:
+                continue
+            new_cc, new_at = events
+            for cc_number, value, channel in new_cc:
+                midi_manager.send_cc([(cc_number, channel)], value)
+            for _, pressure, channel in new_at:
+                midi_manager.send_aftertouch([channel], pressure)
+
+    def _stop_loop_with_reset(self, slot_idx):
+        """Stop a slot's loop; if cc_reset is enabled, re-send the last live
+        fader values for exactly the (CC, channel) pairs the loop recorded (3e)."""
+        loop = self.loop_manager.loops[slot_idx]
+        if loop is None:
+            return
+        was_playing = loop.loop_is_playing and not loop.is_recording
+        self.loop_manager.toggle_playstate(slot_idx, False)
+        if was_playing and settings.get_cc_reset():
+            self._send_cc_reset(loop)
+
+    def _send_cc_reset(self, loop):
+        for (cc_number, channel) in loop._last_cc_values:
+            live_value = self._last_live_cc_values.get((cc_number, channel))
+            if live_value is not None:
+                midi_manager.send_cc([(cc_number, channel)], live_value)
+        for channel in loop._last_at_values:
+            live_pressure = self._last_live_at_values.get(channel)
+            if live_pressure is not None:
+                midi_manager.send_aftertouch([channel], live_pressure)
+
+    # -------------------- Lights interface --------------------
+
+    def get_record_slot_states(self):
+        """
+        Per-slot display state for the LightsManager (3d).
+
+        Returns:
+            list of (state, color) for slots 0-3. color is only meaningful for
+            "stopped" (the bank color of the set active at record start).
+        """
+        states = []
+        for slot_idx in range(4):
+            if slot_idx == self._delete_armed_slot:
+                states.append(("delete_armed", None))
+                continue
+            state = self.loop_manager.get_slot_state(slot_idx)
+            color = None
+            if state == SLOT_STOPPED:
+                set_idx = self.loop_manager.loops[slot_idx].cc_set_idx
+                if set_idx == 0:
+                    color = cfg.GLOBAL_BANK_COLOR
+                else:
+                    color = cfg.PAGE_COLORS[0][set_idx - 1]
+            states.append((state, color))
+        return states
+
+    def get_set_flash(self):
+        """CC-set switch flash for the lights (3d polish): the set index to
+        flash, or -1 when no flash is active."""
+        if self._set_flash_set_idx == -1:
+            return -1
+        if time.monotonic() - self._set_flash_time > cfg.RECORD_SET_FLASH_S:
+            self._set_flash_set_idx = -1
+            return -1
+        return self._set_flash_set_idx
+
+    @property
+    def record_display_bank_idx(self):
+        """Active record set mapped to a bank index for the slider lights
+        (page 0); -1 = global."""
+        return self.record_cc_set_idx - 1

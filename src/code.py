@@ -42,26 +42,44 @@ serial_config.set_midi_manager(midi_manager)
 # Main loop
 while True:
     midi_controller.update_inputs()
-    midi_controller.process_inputs()
+    midi_controller.process_inputs()  # also runs the Record Mode timers + playback pump
     serial_config.update()
 
-    bank_idx = midi_controller.current_bank_idx
-    page_idx = midi_controller.current_page_idx
-    locked_bank_idx = midi_controller.locked_bank_idx
+    # Record Mode enter/exit confirmation animation (brief, blocking)
+    if midi_controller.record_mode_just_toggled:
+        midi_controller.record_mode_just_toggled = False
+        lights_manager.record_mode_toggle_animation(midi_controller.record_mode_active)
+
     jump_mode_enabled = midi_controller.jump_mode_enabled
     sliders = midi_controller.sliders
     buttons = midi_controller.buttons
-    held_button_order = midi_controller.held_button_order
-    page_just_changed = midi_controller.page_just_changed
-    page_change_feedback = midi_controller.update_page_change_feedback()
 
-    # Update slider lights
-    lights_manager.update_slider_lights(sliders, bank_idx, page_idx, held_button_order, page_just_changed)
-
-    if locked_bank_idx != -1:
-        lights_manager.indicate_locked_bank(page_idx, locked_bank_idx)
+    if midi_controller.record_mode_active:
+        # Record Mode owns the button pixels (the normal update_buttons /
+        # indicate_locked_bank calls would overwrite them every frame)
+        lights_manager.update_slider_lights(sliders, midi_controller.record_display_bank_idx, 0)
+        lights_manager.update_record_mode_buttons(
+            midi_controller.get_record_slot_states(), midi_controller.get_set_flash())
     else:
-        lights_manager.update_buttons(buttons, page_idx, locked_bank_idx, page_just_changed, page_change_feedback)
+        bank_idx = midi_controller.current_bank_idx
+        page_idx = midi_controller.current_page_idx
+        locked_bank_idx = midi_controller.locked_bank_idx
+        held_button_order = midi_controller.held_button_order
+        page_just_changed = midi_controller.page_just_changed
+        page_change_feedback = midi_controller.update_page_change_feedback()
+
+        # Update slider lights
+        lights_manager.update_slider_lights(sliders, bank_idx, page_idx, held_button_order, page_just_changed)
+
+        if locked_bank_idx != -1:
+            lights_manager.indicate_locked_bank(page_idx, locked_bank_idx)
+        else:
+            lights_manager.update_buttons(buttons, page_idx, locked_bank_idx, page_just_changed, page_change_feedback)
+
+    # Hold-all-four-buttons Record Mode toggle progress (red fill, both modes)
+    hold_pixels_lit = midi_controller.mode_hold_pixels_lit
+    if hold_pixels_lit > 0:
+        lights_manager.update_mode_hold_progress(hold_pixels_lit)
 
     lights_manager.indicate_jump_mode(jump_mode_enabled)
     lights_manager.show_pixels()

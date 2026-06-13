@@ -17,11 +17,22 @@
         "PAGE_N_BANK_SLIDER_CHANNELS: Per-slider channel overrides within each bank.",
         "  Outer array = bank (0-3), inner array = slider (A-D). Blank = use bank channel.",
         "",
+        "RECORD MODE (hold all 4 buttons for 3 seconds to enter/exit):",
+        "  LOOP_TYPE: 'loop' (repeat) or 'hold' (play once, park on final values).",
+        "  CC_RESOLUTION: Min value change to record an event. 0 = record everything sent.",
+        "  TRIM_SILENCE: true = trim leading silence so loops start on the first movement.",
+        "  CC_RESET: true = on loop stop, re-send the last live fader values ('bounce back').",
+        "",
         "Tip: Avoid overlapping channels between pages for best pickup mode behavior."
     ],
 
     "GLOBAL_CHANNEL": 1,
     "GLOBAL_MESSAGE_TYPE": "CC",
+
+    "LOOP_TYPE": "loop",
+    "CC_RESOLUTION": 0,
+    "TRIM_SILENCE": true,
+    "CC_RESET": true,
 
     "GLOBAL_CC_BANK": [0, 1, 2, 3],
     "GLOBAL_SLIDER_CHANNELS": ["", "", "", ""],

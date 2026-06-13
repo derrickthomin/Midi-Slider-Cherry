@@ -608,6 +608,38 @@
                     </div>
                 </div>
 
+                <div class="top-settings collapsed" id="recordSettings" style="display:none;">
+                    <div class="top-settings-toggle" id="recordSettingsToggle">
+                        <h3>Record Mode <span class="help-icon">?<span class="help-tooltip">CC loop recorder: hold all 4 buttons for 3 seconds to enter/exit Record Mode on the device. Click to expand.</span></span></h3>
+                        <span class="chevron">&#9660;</span>
+                    </div>
+                    <div class="top-settings-body">
+                        <div class="top-settings-group">
+                            <label>Loop Type</label>
+                            <select id="recLoopType" title="Default mode for new loops: Loop repeats; Hold plays the sweep once and parks on the final values">
+                                <option value="loop">Loop</option>
+                                <option value="hold">Hold</option>
+                            </select>
+                        </div>
+                        <div class="top-settings-group">
+                            <label>CC Resolution</label>
+                            <input type="number" id="recCcResolution" min="0" max="127" value="0" title="Minimum value change to record an event. 0 = record every change that was sent">
+                        </div>
+                        <div class="top-settings-group" style="justify-content:flex-end;">
+                            <div class="inherit-row">
+                                <input type="checkbox" id="recTrimSilence" class="inherit-checkbox" checked title="Trim leading silence so the loop starts on the first fader movement" style="width:14px;height:14px;margin:0;accent-color:#1a8a1a;">
+                                <label for="recTrimSilence">Trim Silence</label>
+                            </div>
+                        </div>
+                        <div class="top-settings-group" style="justify-content:flex-end;">
+                            <div class="inherit-row">
+                                <input type="checkbox" id="recCcReset" class="inherit-checkbox" checked title="On loop stop, re-send the last live fader values for the CCs the loop recorded ('bounce back')" style="width:14px;height:14px;margin:0;accent-color:#1a8a1a;">
+                                <label for="recCcReset">CC Reset</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="inline-banner" id="inlineBanner"></div>
                 <div class="page-tabs" id="pageTabs">
                     <div class="page-tab active" data-page="0">Page 1</div>
@@ -798,6 +830,13 @@
             <h3>MIDI Learn</h3>
             <p>Click <strong>Learn</strong> beneath a slider, then send a CC from your DAW or controller — the incoming CC number is assigned to that slider. Enable the <strong>"Learn Ch"</strong> checkbox (bottom-left) to also set that slider's individual channel from the incoming message. Times out after 30 seconds.</p>
 
+            <h3>Record Mode</h3>
+            <p>Hold <strong>all 4 buttons for 3 seconds</strong> to enter or exit Record Mode (the button LEDs fill red as you hold). In Record Mode the buttons become 4 loop slots: <strong>double-click</strong> an empty slot to record fader movement, <strong>single-click</strong> to stop recording (the loop plays) or to play/stop an existing loop, and <strong>double-click a loop then click it again</strong> to delete it (blinking red asks for confirmation). Step between the global bank and Page 1's four banks with the page-change gesture. Loops live in RAM only and are cleared on power-cycle.</p>
+            <p><strong>Loop Type</strong> — Loop repeats; Hold plays the recorded sweep once and parks on the final values.<br>
+            <strong>CC Resolution</strong> — minimum value change to record an event (0 = record everything sent).<br>
+            <strong>Trim Silence</strong> — start the loop on the first fader movement.<br>
+            <strong>CC Reset</strong> — when a loop stops, re-send the last live fader values for the CCs it recorded ("bounce back").</p>
+
             <h3>Saving</h3>
             <p>Click <strong>Save Settings</strong> to write to the device. <strong>Unplug and re-plug</strong> for changes to take effect.</p>
 
@@ -843,12 +882,25 @@
 
         let firmwareCaps = {
             per_slider_channels: false,
+            record_mode: false,
             protocol_version: 0,
             probed: false,
         };
 
         function supportsPerSliderChannels() {
             return firmwareCaps.per_slider_channels === true;
+        }
+
+        function supportsRecordMode() {
+            return firmwareCaps.record_mode === true;
+        }
+
+        function removeRecordModeKeys() {
+            if (!settings) return;
+            delete settings.LOOP_TYPE;
+            delete settings.CC_RESOLUTION;
+            delete settings.TRIM_SILENCE;
+            delete settings.CC_RESET;
         }
 
         function removePerSliderChannelKeys() {
@@ -863,9 +915,14 @@
             const caps = (capsResponse && capsResponse.capabilities) ? capsResponse.capabilities : {};
             firmwareCaps = {
                 per_slider_channels: !!caps.per_slider_channels,
+                record_mode: !!caps.record_mode,
                 protocol_version: (capsResponse && capsResponse.protocol_version) ? capsResponse.protocol_version : 0,
                 probed: true,
             };
+
+            const recordSection = document.getElementById('recordSettings');
+            if (recordSection) recordSection.style.display = supportsRecordMode() ? '' : 'none';
+            if (!supportsRecordMode()) removeRecordModeKeys();
 
             const enabled = supportsPerSliderChannels();
             const sliderChRowLabel = document.getElementById('sliderChRowLabel');
@@ -895,7 +952,7 @@
         function markLegacyFirmwareCapabilities() {
             applyFirmwareCapabilities({
                 protocol_version: 0,
-                capabilities: { per_slider_channels: false }
+                capabilities: { per_slider_channels: false, record_mode: false }
             });
         }
 
@@ -1263,6 +1320,10 @@
         function populateForm(data) {
             document.getElementById('globalChannel').value = data.GLOBAL_CHANNEL || 1;
             document.getElementById('globalType').value = data.GLOBAL_MESSAGE_TYPE || 'CC';
+            document.getElementById('recLoopType').value = (data.LOOP_TYPE === 'hold') ? 'hold' : 'loop';
+            document.getElementById('recCcResolution').value = (typeof data.CC_RESOLUTION === 'number') ? data.CC_RESOLUTION : 0;
+            document.getElementById('recTrimSilence').checked = data.TRIM_SILENCE !== false;
+            document.getElementById('recCcReset').checked = data.CC_RESET !== false;
             loadCurrentCCValues();
             updateBankIndicator();
             loadingMsg.style.display = 'none';
@@ -1274,6 +1335,15 @@
             settings.GLOBAL_CHANNEL = document.getElementById('globalChannel').value;
             settings.GLOBAL_MESSAGE_TYPE = document.getElementById('globalType').value;
             if (!supportsPerSliderChannels()) removePerSliderChannelKeys();
+            if (supportsRecordMode()) {
+                settings.LOOP_TYPE = document.getElementById('recLoopType').value;
+                const res = parseInt(document.getElementById('recCcResolution').value, 10);
+                settings.CC_RESOLUTION = (isNaN(res) || res < 0) ? 0 : Math.min(res, 127);
+                settings.TRIM_SILENCE = document.getElementById('recTrimSilence').checked;
+                settings.CC_RESET = document.getElementById('recCcReset').checked;
+            } else {
+                removeRecordModeKeys();
+            }
             delete settings._help;
             return settings;
         }
@@ -1291,6 +1361,10 @@
 
         document.getElementById('topSettingsToggle').addEventListener('click', () => {
             document.getElementById('topSettings').classList.toggle('collapsed');
+        });
+
+        document.getElementById('recordSettingsToggle').addEventListener('click', () => {
+            document.getElementById('recordSettings').classList.toggle('collapsed');
         });
 
         document.querySelectorAll('.device-button').forEach(btn => {
