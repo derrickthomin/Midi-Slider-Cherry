@@ -616,7 +616,7 @@
                     <div class="top-settings-body">
                         <div class="top-settings-group">
                             <label>Loop Type</label>
-                            <select id="recLoopType" title="Default mode for new loops: Loop repeats; Hold plays the sweep once and parks on the final values">
+                            <select id="recLoopType" title="Default mode for new loops: Loop repeats; Hold plays only while its pad is held (release stops it, snapping back if CC Reset is on)">
                                 <option value="loop">Loop</option>
                                 <option value="hold">Hold</option>
                             </select>
@@ -832,7 +832,7 @@
 
             <h3>Record Mode</h3>
             <p>Hold <strong>all 4 buttons for 3 seconds</strong> to enter or exit Record Mode (the button LEDs fill red as you hold). In Record Mode the buttons become 4 loop slots: <strong>double-click</strong> an empty slot to record fader movement, <strong>single-click</strong> to stop recording (the loop plays) or to play/stop an existing loop, and <strong>double-click a loop then click it again</strong> to delete it (blinking red asks for confirmation). Step between the global bank and Page 1's four banks with the page-change gesture. Loops live in RAM only and are cleared on power-cycle.</p>
-            <p><strong>Loop Type</strong> — Loop repeats; Hold plays the recorded sweep once and parks on the final values.<br>
+            <p><strong>Loop Type</strong> — Loop repeats; Hold plays only while its pad is held (release stops it, snapping back when CC Reset is on).<br>
             <strong>CC Resolution</strong> — minimum value change to record an event (0 = record everything sent).<br>
             <strong>Trim Silence</strong> — start the loop on the first fader movement.<br>
             <strong>CC Reset</strong> — when a loop stops, re-send the last live fader values for the CCs it recorded ("bounce back").</p>

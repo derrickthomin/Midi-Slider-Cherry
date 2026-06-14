@@ -40,6 +40,20 @@ MAX_LOOP_MS = 60000             # Per-loop length cap (forced by 'H' array times
 MEMORY_CRITICAL_THRESHOLD = 10000  # gc.mem_free() floor; recording auto-stops below this
 NUM_RECORD_CC_SETS = 5          # global bank + page 1's 4 banks
 
+# Mapping Mode (on-device MIDI learn)
+MAPPING_LOW_THRESH = 3          # wiggle: low-extreme zone is cc_value <= this
+MAPPING_HIGH_THRESH = 125       # wiggle: high-extreme zone is cc_value >= this
+MAPPING_WIGGLE_HITS = 3         # alternating zone entries required
+MAPPING_WIGGLE_WINDOW_S = 3.0   # all hits must land within this window
+MAPPING_SELECT_DELTA = 5        # cc_value movement that (re)selects a learn target
+MAPPING_LEARN_HITS = 3          # consecutive same-(cc,ch) messages required to commit a mapping
+MAPPING_LEARN_WINDOW_S = 1.0    # max gap between those messages (a knob twist is a fast stream)
+MAPPING_CONFIRM_S = 0.5         # green/red confirm flash duration
+MAPPING_BLINK_S = 0.25          # blue blink phase length (on 0.25s / off 0.25s)
+MAPPING_COLOR = (0, 0, 255)         # blue
+MAPPING_CONFIRM_COLOR = (0, 255, 0)  # green
+MAPPING_FAIL_COLOR = (255, 0, 0)     # red
+
 # Global CC Bank and Pages from settings
 GLOBAL_CC_BANK = settings.get_global_cc_bank()
 PAGES = settings.get_all_pages()

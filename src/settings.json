@@ -18,10 +18,10 @@
         "  Outer array = bank (0-3), inner array = slider (A-D). Blank = use bank channel.",
         "",
         "RECORD MODE (hold all 4 buttons for 3 seconds to enter/exit):",
-        "  LOOP_TYPE: 'loop' (repeat) or 'hold' (play once, park on final values).",
+        "  LOOP_TYPE: 'loop' (repeat) or 'hold' (play only while the pad is held; release stops/snaps back).",
         "  CC_RESOLUTION: Min value change to record an event. 0 = record everything sent.",
         "  TRIM_SILENCE: true = trim leading silence so loops start on the first movement.",
-        "  CC_RESET: true = on loop stop, re-send the last live fader values ('bounce back').",
+        "  CC_RESET: true = on loop stop, snap back to each parameter's first recorded value ('bounce back').",
         "",
         "Tip: Avoid overlapping channels between pages for best pickup mode behavior."
     ],

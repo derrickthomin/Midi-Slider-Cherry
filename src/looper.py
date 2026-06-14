@@ -7,8 +7,9 @@ LumaFader needs:
 - CC + Channel Aftertouch events only (no notes, no arp, no oneshot).
 - Pure wall-clock millisecond timebase (no MIDI clock, no BPM, no quantize).
 - RAM-only storage (no flash streaming / persistence) - loops are session-only.
-- Loop types: "loop" (repeat) and "hold" (play the sweep once, park on the
-  final values).
+- Loop types: "loop" (repeat) and "hold" (gate playback: the controller plays
+  the loop only while its pad is held; the engine parks on the sweep's final
+  values once it completes within a hold).
 
 The engine has no hardware dependencies, so it can be unit-tested off-device.
 All MIDI sending is done by the caller (controller / playback pump).
@@ -113,6 +114,12 @@ class MidiLoop:
         self._last_cc_values = {}   # {(cc_num, midi_channel): value}
         self._last_at_values = {}   # {midi_channel: pressure}
 
+        # First recorded value per (cc, ch) / per ch - feeds the cc_reset
+        # snap-back (return to where the parameter was when the loop's sweep
+        # began). Kept after recording stops, like the _last_* dicts above.
+        self._first_cc_values = {}  # {(cc_num, midi_channel): value}
+        self._first_at_values = {}  # {midi_channel: pressure}
+
         # Playback queue indices
         self.queue_index_cc = 0
         self.queue_index_at = 0
@@ -178,6 +185,8 @@ class MidiLoop:
         self.aftertouch_events.clear()
         self._last_cc_values.clear()
         self._last_at_values.clear()
+        self._first_cc_values.clear()
+        self._first_at_values.clear()
         self.queue_index_cc = 0
         self.queue_index_at = 0
         self.total_loop_ms = 0
@@ -232,6 +241,8 @@ class MidiLoop:
         if ms is None:
             return
 
+        if cache_key not in self._first_cc_values:
+            self._first_cc_values[cache_key] = cc_value
         self._last_cc_values[cache_key] = cc_value
         self.cc_events.add_event(cc_num, cc_value, ms, midi_channel)
 
@@ -245,6 +256,8 @@ class MidiLoop:
         if ms is None:
             return
 
+        if midi_channel not in self._first_at_values:
+            self._first_at_values[midi_channel] = pressure
         self._last_at_values[midi_channel] = pressure
         self.aftertouch_events.add_event(0, pressure, ms, midi_channel)
 

@@ -54,7 +54,19 @@ while True:
     sliders = midi_controller.sliders
     buttons = midi_controller.buttons
 
-    if midi_controller.record_mode_active:
+    if midi_controller.mapping_mode_active:
+        # Mapping Mode owns the whole strip (the normal update_slider_lights /
+        # update_buttons / indicate_locked_bank calls would overwrite it every
+        # frame, gotcha 8.3)
+        lights_manager.update_mapping_mode(
+            midi_controller.mapping_target_slider,
+            midi_controller.mapping_confirm_slider,
+            midi_controller.mapping_confirm_slider != -1,
+            midi_controller.mapping_save_failed,
+            midi_controller.mapping_bank_button_idx,
+            midi_controller.mapping_bank_page_idx,
+        )
+    elif midi_controller.record_mode_active:
         # Record Mode owns the button pixels (the normal update_buttons /
         # indicate_locked_bank calls would overwrite them every frame)
         lights_manager.update_slider_lights(sliders, midi_controller.record_display_bank_idx, 0)
@@ -81,6 +93,9 @@ while True:
     if hold_pixels_lit > 0:
         lights_manager.update_mode_hold_progress(hold_pixels_lit)
 
-    lights_manager.indicate_jump_mode(jump_mode_enabled)
+    # Mapping Mode draws pixel 68 itself (the blue blink, §2j) - don't let
+    # the normal jump-mode indicator overwrite it every frame.
+    if not midi_controller.mapping_mode_active:
+        lights_manager.indicate_jump_mode(jump_mode_enabled)
     lights_manager.show_pixels()
     time.sleep(0.0001)

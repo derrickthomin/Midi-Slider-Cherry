@@ -28,6 +28,13 @@ class MidiManager:
         # This allows independent pickup behavior even though AT is per-channel
         self.last_at_values_per_slider = {}
 
+        # Hard output kill-switch. When True, send_cc / send_aftertouch become
+        # no-ops (and do NOT touch the last-value caches). Mapping Mode raises
+        # this so the device can NEVER emit MIDI while learning - this is the
+        # single guaranteed chokepoint against a feedback/circular-mapping loop,
+        # independent of the mode-guard logic in the controller.
+        self.output_muted = False
+
         # Set up the UART and MIDI interfaces
         uart = busio.UART(
             MIDI_AUX_TX_PIN,
@@ -135,6 +142,8 @@ class MidiManager:
             cc_list_with_channels: List of (cc_number, channel) tuples
             cc_value (int): The CC value to send (0-127)
         """
+        if self.output_muted:
+            return
         for cc_number, channel in cc_list_with_channels:
             if self.has_cc_value_changed(cc_number, channel, cc_value):
                 key = (cc_number, channel)
@@ -191,6 +200,8 @@ class MidiManager:
             page_idx (int): Page index (0-3) for per-slider tracking
             bank_idx (int): Bank index (0-3) for per-slider tracking
         """
+        if self.output_muted:
+            return
         # Track per-slider for LED/pickup purposes
         slider_key = (slider_idx, page_idx, bank_idx)
         self.last_at_values_per_slider[slider_key] = pressure

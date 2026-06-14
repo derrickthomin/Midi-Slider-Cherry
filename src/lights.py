@@ -276,6 +276,52 @@ class LightsManager:
         elif set_flash > 0:
             self.pixels[self.button_pixel_indices[set_flash - 1]] = cfg.RECORD_SET_FLASH_COLOR
 
+    def update_mapping_mode(self, target_slider_idx, confirm_slider_idx, confirm_active,
+                            confirm_failed, bank_button_idx=-1, bank_page_idx=0):
+        """
+        Draws Mapping Mode (on-device MIDI learn, §2j): replaces
+        update_slider_lights / update_buttons / indicate_locked_bank /
+        indicate_jump_mode while Mapping Mode is active.
+
+        Args:
+            target_slider_idx (int): Current learn target slider's 16 pixels
+                blink blue (-1 = idle, nothing blinks).
+            confirm_slider_idx (int): Slider showing the confirm flash
+                (-1 = none).
+            confirm_active (bool): True while the confirm flash is showing -
+                overrides the target's blink with a solid color.
+            confirm_failed (bool): True -> red flash (save failed),
+                False -> green (saved).
+            bank_button_idx (int): For bank-scope mapping, the locked bank's
+                button to keep lit at its normal color so the user can see which
+                bank they're assigning. -1 = global scope (all buttons dark).
+            bank_page_idx (int): Page index used for that button's normal color.
+        """
+        self.clear()
+
+        blink_on = int(time.monotonic() / cfg.MAPPING_BLINK_S) % 2 == 0
+
+        if target_slider_idx != -1:
+            color = cfg.MAPPING_COLOR if blink_on else (0, 0, 0)
+            for pix_idx in self.slider_pixel_indices[target_slider_idx]:
+                self.pixels[pix_idx] = color
+
+        if confirm_active and confirm_slider_idx != -1:
+            confirm_color = cfg.MAPPING_FAIL_COLOR if confirm_failed else cfg.MAPPING_CONFIRM_COLOR
+            for pix_idx in self.slider_pixel_indices[confirm_slider_idx]:
+                self.pixels[pix_idx] = confirm_color
+
+        # Bank scope keeps the locked bank's button solid at its normal color;
+        # global scope leaves all four dark (handled by bank_button_idx == -1).
+        for idx in range(4):
+            if idx == bank_button_idx:
+                self.pixels[self.button_pixel_indices[idx]] = cfg.PAGE_COLORS[bank_page_idx][idx]
+            else:
+                self.pixels[self.button_pixel_indices[idx]] = (0, 0, 0)
+
+        # Indicator pixel ("top LED") blinks blue in sync for the whole session.
+        self.pixels[self.indicator_pixel_index] = cfg.MAPPING_COLOR if blink_on else (0, 0, 0)
+
     def update_mode_hold_progress(self, pixels_lit):
         """
         Overlays the hold-all-four-buttons progress fill: button pixels fill

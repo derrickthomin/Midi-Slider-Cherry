@@ -21,6 +21,7 @@ import constants as cfg
 from settings import settings
 from loopmanager import (LoopManager, SLOT_EMPTY, SLOT_RECORDING,
                          SLOT_PLAYING, SLOT_STOPPED)
+from wiggle import SliderWiggleDetector
 
 
 # ---------- Fake clock ----------
@@ -255,6 +256,121 @@ def test_multichannel_events():
     mgr.delete_loop(0)
 
 
+def test_first_value_tracking():
+    print("first recorded value per (cc, ch) / channel feeds cc_reset snap-back")
+    mgr = fresh_manager()
+    mgr.start_recording(0)
+    loop = mgr.loops[0]
+
+    clock.advance(10)
+    loop.add_cc(10, 40, 0)   # first value for (10, 0)
+    clock.advance(10)
+    loop.add_cc(10, 90, 0)   # later value: first stays 40
+    clock.advance(10)
+    loop.add_cc(10, 20, 3)   # different channel: separate first-value entry
+    clock.advance(10)
+    loop.add_aftertouch(30, 1)  # first AT for channel 1
+    clock.advance(10)
+    loop.add_aftertouch(110, 1)  # later AT: first stays 30
+    clock.advance(100)
+    mgr.stop_recording()
+
+    check(loop._first_cc_values[(10, 0)] == 40, "first CC value retained, not overwritten")
+    check(loop._first_cc_values[(10, 3)] == 20, "first value tracked per channel")
+    check(loop._last_cc_values[(10, 0)] == 90, "last value still tracks most recent")
+    check(loop._first_at_values[1] == 30, "first AT value retained, not overwritten")
+    check(loop._last_at_values[1] == 110, "last AT value still tracks most recent")
+
+    mgr.delete_loop(0)
+    check(loop._first_cc_values == {} and loop._first_at_values == {}, "clear() empties first-value dicts")
+
+
+def test_first_value_respects_resolution_filter():
+    print("values filtered by cc_resolution don't become 'first' values")
+    settings.settings["CC_RESOLUTION"] = 5
+    mgr = LoopManager()
+    mgr.start_recording(0)
+    loop = mgr.loops[0]
+    clock.advance(10)
+    loop.add_cc(70, 64, 0)   # recorded: first value
+    clock.advance(10)
+    loop.add_cc(70, 66, 0)   # delta 2 <= 5: filtered, must not change first value
+    clock.advance(10)
+    loop.add_cc(70, 80, 0)   # delta 16 > 5: recorded, but first value unchanged
+    clock.advance(100)
+    mgr.stop_recording()
+
+    check(loop._first_cc_values[(70, 0)] == 64, "filtered intermediate value did not become 'first'")
+    check(loop._last_cc_values[(70, 0)] == 80, "last value reflects the latest recorded change")
+    settings.settings["CC_RESOLUTION"] = 0
+    mgr.delete_loop(0)
+
+
+def test_wiggle_zone_boundaries():
+    print("wiggle: zone thresholds are inclusive (<=3 / >=125)")
+    check(SliderWiggleDetector._zone_for(cfg.MAPPING_LOW_THRESH) == "LOW", "low threshold is in the LOW zone")
+    check(SliderWiggleDetector._zone_for(cfg.MAPPING_LOW_THRESH + 1) is None, "just above low threshold is no zone")
+    check(SliderWiggleDetector._zone_for(cfg.MAPPING_HIGH_THRESH) == "HIGH", "high threshold is in the HIGH zone")
+    check(SliderWiggleDetector._zone_for(cfg.MAPPING_HIGH_THRESH - 1) is None, "just below high threshold is no zone")
+
+
+def test_wiggle_seeded_in_zone_counts_as_hit_one():
+    print("wiggle: arming inside a zone counts as hit 1")
+    det = SliderWiggleDetector()
+    det.arm(2, 0.0)  # seed inside LOW zone -> hit 1
+    check(det.update(125, 0.5) is False, "hit 2 (HIGH) does not complete")
+    check(det.update(2, 1.0) is True, "hit 3 (LOW) completes the wiggle")
+
+
+def test_wiggle_requires_alternation():
+    print("wiggle: repeated entries into the same zone don't count")
+    det = SliderWiggleDetector()
+    det.arm(2, 0.0)  # hit 1 (LOW)
+    check(det.update(2, 0.2) is False, "staying in LOW doesn't add a hit")
+    check(det.update(125, 0.5) is False, "HIGH is hit 2")
+    check(det.update(125, 0.7) is False, "staying in HIGH doesn't add a hit")
+    check(det.update(2, 1.0) is True, "LOW is hit 3 - completes")
+
+
+def test_wiggle_mid_travel_seed_is_zero_hits():
+    print("wiggle: arming mid-travel starts at zero hits")
+    det = SliderWiggleDetector()
+    det.arm(64, 0.0)  # mid-travel: no hit yet
+    check(det.update(64, 0.5) is False, "still no zone reached")
+    check(det.update(3, 1.0) is False, "LOW is hit 1 (fresh timer)")
+    check(det.update(125, 1.5) is False, "HIGH is hit 2")
+    check(det.update(3, 2.0) is True, "LOW is hit 3 - completes")
+
+
+def test_wiggle_window_expiry_reseeds():
+    print("wiggle: window expiry re-seeds from the current sample")
+    det = SliderWiggleDetector()
+    det.arm(0, 0.0)  # hit 1 (LOW) @ t=0
+    check(det.update(127, 1.0) is False, "hit 2 (HIGH) @ t=1")
+    # window (3.0s) expires before hit 3 lands
+    check(det.update(0, 4.0) is False, "expired window re-seeds as hit 1 (LOW) @ t=4")
+    check(det.update(127, 4.5) is False, "hit 2 (HIGH) @ t=4.5, within the new window")
+    check(det.update(0, 5.0) is True, "hit 3 (LOW) @ t=5 completes within the re-seeded window")
+
+
+def test_wiggle_completes_at_exact_window_boundary():
+    print("wiggle: completing exactly at the window boundary counts")
+    det = SliderWiggleDetector()
+    det.arm(0, 0.0)  # hit 1 @ t=0
+    check(det.update(127, 1.0) is False, "hit 2 @ t=1")
+    check(det.update(0, 3.0) is True, "hit 3 @ t=3.0 == window boundary - still completes")
+
+
+def test_wiggle_disarm_clears_state():
+    print("wiggle: disarm clears hits/zone")
+    det = SliderWiggleDetector()
+    det.arm(0, 0.0)  # hit 1
+    det.disarm()
+    check(det.update(127, 0.1) is False, "after disarm, HIGH is treated as hit 1, not hit 2")
+    check(det.update(0, 0.2) is False, "...so LOW here is only hit 2")
+    check(det.update(127, 0.3) is True, "hit 3 completes from the post-disarm baseline")
+
+
 def test_ticks_wraparound():
     print("ms timebase survives supervisor.ticks_ms wraparound")
     mgr = fresh_manager()
@@ -281,5 +397,14 @@ if __name__ == "__main__":
     test_time_cap_autostop()
     test_cc_resolution_filter()
     test_multichannel_events()
+    test_first_value_tracking()
+    test_first_value_respects_resolution_filter()
+    test_wiggle_zone_boundaries()
+    test_wiggle_seeded_in_zone_counts_as_hit_one()
+    test_wiggle_requires_alternation()
+    test_wiggle_mid_travel_seed_is_zero_hits()
+    test_wiggle_window_expiry_reseeds()
+    test_wiggle_completes_at_exact_window_boundary()
+    test_wiggle_disarm_clears_state()
     test_ticks_wraparound()
     print(f"\nAll {PASS} checks passed.")

@@ -205,12 +205,12 @@ class Settings:
         self.settings = {
             "GLOBAL_CHANNEL": self.DEFAULT_GLOBAL_CHANNEL,
             "GLOBAL_MESSAGE_TYPE": self.DEFAULT_GLOBAL_MESSAGE_TYPE,
-            "GLOBAL_CC_BANK": self.DEFAULT_GLOBAL_CC_BANK,
+            "GLOBAL_CC_BANK": list(self.DEFAULT_GLOBAL_CC_BANK),
             "GLOBAL_SLIDER_CHANNELS": list(self.DEFAULT_GLOBAL_SLIDER_CHANNELS),
-            "PAGE_1_BANKS": self.DEFAULT_PAGE_1_BANKS,
-            "PAGE_2_BANKS": self.DEFAULT_PAGE_2_BANKS,
-            "PAGE_3_BANKS": self.DEFAULT_PAGE_3_BANKS,
-            "PAGE_4_BANKS": self.DEFAULT_PAGE_4_BANKS,
+            "PAGE_1_BANKS": [list(b) for b in self.DEFAULT_PAGE_1_BANKS],
+            "PAGE_2_BANKS": [list(b) for b in self.DEFAULT_PAGE_2_BANKS],
+            "PAGE_3_BANKS": [list(b) for b in self.DEFAULT_PAGE_3_BANKS],
+            "PAGE_4_BANKS": [list(b) for b in self.DEFAULT_PAGE_4_BANKS],
             "PAGE_1_CHANNEL": None,
             "PAGE_2_CHANNEL": None,
             "PAGE_3_CHANNEL": None,
@@ -250,13 +250,24 @@ class Settings:
         return val is None or val == "" or val == "null"
     
     def _save_settings(self):
-        """Save current settings to JSON file."""
+        """Save current settings to JSON file. Returns True on success, False
+        if the write failed (e.g. filesystem mounted readonly)."""
         try:
             with open(self.settings_path, 'w') as f:
-                json.dump(self.settings, f, indent=4)
-        except Exception as e:
+                # NOTE: CircuitPython's json.dump does not accept `indent`
+                # (raises TypeError). Keep this call kwarg-free so on-device
+                # saves work; the file is written compact (single line).
+                json.dump(self.settings, f)
+            return True
+        except OSError as e:
             print(f"Error saving settings: {str(e)}")
-    
+            return False
+
+    def save(self):
+        """Public wrapper around _save_settings(). Returns True on success,
+        False if the write failed."""
+        return self._save_settings()
+
     def get_global_cc_bank(self):
         """Get the global CC bank settings."""
         return self.settings["GLOBAL_CC_BANK"]
@@ -719,7 +730,7 @@ class Settings:
     def get_cc_reset(self):
         """
         Get the Record Mode CC reset ("bounce back") setting: when True,
-        stopping a loop re-sends the last live fader values for the (CC, channel)
+        stopping a loop re-sends the first recorded values for the (CC, channel)
         pairs the loop recorded.
 
         Returns:
@@ -729,6 +740,96 @@ class Settings:
         if isinstance(val, bool):
             return val
         return self.DEFAULT_CC_RESET
+
+    # ==================== Device Mapping (on-device MIDI learn) ====================
+
+    def _validate_mapping_args(self, cc_number, channel):
+        """Validate a (cc_number, channel) pair for a device-mapping write."""
+        if not isinstance(cc_number, int) or not (0 <= cc_number <= 127):
+            return False
+        if not isinstance(channel, int) or not (1 <= channel <= 16):
+            return False
+        return True
+
+    def set_global_slider_mapping(self, slider_idx, cc_number, channel, persist=True):
+        """
+        Map slider `slider_idx` in the global bank to an incoming CC message:
+        writes the CC number into GLOBAL_CC_BANK (in place, so it stays
+        aliased with cfg.GLOBAL_CC_BANK) and the channel into
+        GLOBAL_SLIDER_CHANNELS (per-slider override).
+
+        Args:
+            slider_idx (int): Slider index (0-3)
+            cc_number (int): CC number (0-127)
+            channel (int): MIDI channel (1-16, 1-indexed)
+            persist (bool): If True, also write to flash and return the write
+                  result. If False, apply live only (no flash write) and
+                  return True on success - the caller persists later via
+                  settings.save() (lets the UI react before the blocking write).
+
+        Returns:
+            bool: True if applied (and, when persist=True, saved to flash),
+                  False if validation or the write failed. The mapping is
+                  applied live regardless of whether the write succeeds.
+        """
+        if not self._validate_mapping_args(cc_number, channel):
+            return False
+
+        self.settings["GLOBAL_CC_BANK"][slider_idx] = cc_number
+
+        gsc = self.settings.get("GLOBAL_SLIDER_CHANNELS")
+        if not isinstance(gsc, list) or len(gsc) != 4:
+            gsc = list(self.DEFAULT_GLOBAL_SLIDER_CHANNELS)
+            self.settings["GLOBAL_SLIDER_CHANNELS"] = gsc
+        gsc[slider_idx] = channel
+
+        if persist:
+            return self.save()
+        return True
+
+    def set_bank_slider_mapping(self, page_idx, bank_idx, slider_idx, cc_number, channel, persist=True):
+        """
+        Map slider `slider_idx` in (page_idx, bank_idx) to an incoming CC
+        message: writes the CC number into that page's bank list (in place,
+        so it stays aliased with cfg.PAGES) and the channel into
+        PAGE_N_BANK_SLIDER_CHANNELS (per-slider override).
+
+        Args:
+            page_idx (int): Page index (0-3)
+            bank_idx (int): Bank index (0-3)
+            slider_idx (int): Slider index (0-3)
+            cc_number (int): CC number (0-127)
+            channel (int): MIDI channel (1-16, 1-indexed)
+            persist (bool): If True, also write to flash and return the write
+                  result. If False, apply live only (no flash write) and
+                  return True on success - the caller persists later via
+                  settings.save() (lets the UI react before the blocking write).
+
+        Returns:
+            bool: True if applied (and, when persist=True, saved to flash),
+                  False if validation or the write failed. The mapping is
+                  applied live regardless of whether the write succeeds.
+        """
+        if not self._validate_mapping_args(cc_number, channel):
+            return False
+
+        page_num = page_idx + 1
+        self.settings[f"PAGE_{page_num}_BANKS"][bank_idx][slider_idx] = cc_number
+
+        key = f"PAGE_{page_num}_BANK_SLIDER_CHANNELS"
+        bsc = self.settings.get(key)
+        if not isinstance(bsc, list) or len(bsc) != 4:
+            bsc = [list(r) for r in self.DEFAULT_BANK_SLIDER_CHANNELS]
+            self.settings[key] = bsc
+        bank_row = bsc[bank_idx]
+        if not isinstance(bank_row, list) or len(bank_row) != 4:
+            bank_row = ["", "", "", ""]
+            bsc[bank_idx] = bank_row
+        bank_row[slider_idx] = channel
+
+        if persist:
+            return self.save()
+        return True
 
 
 # Create a singleton instance
