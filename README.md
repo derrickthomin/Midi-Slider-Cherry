@@ -75,7 +75,7 @@ The boot button is on the bottom PCB. See the image below for where it is locate
 
 3. **Install CircuitPython:** Drag `uf2 current/adafruit-circuitpython-raspberry_pi_pico-en_US-8.2.6.uf2` onto the **RPI-RP2** drive. The device will reboot and reappear as a drive called **CIRCUITPY**.
 
-4. **Copy source files:** Copy the entire contents of the `src/` folder onto the **CIRCUITPY** drive. This includes all `.py` files, `settings.json`, and the `lib/` folder. Overwrite if prompted.
+4. **Copy source files:** Copy the entire contents of the latest release ZIP File - [download here](https://github.com/derrickthomin/Midi-Slider-Cherry/releases/latest) **CIRCUITPY** drive. This includes all `.py` files, `settings.json`, and the `lib/` folder. Overwrite if prompted.
 
 5. **Done.** Unplug the LumaFader and plug it back in.
 
