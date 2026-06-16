@@ -10,14 +10,20 @@ The LumaFader 68 is a compact MIDI controller featuring four long-throw faders, 
 
 ## Links
 
+**[Download Latest Firmware Here](https://github.com/derrickthomin/Midi-Slider-Cherry/releases/tag/v1.3)**
+
 *   **Web Config Utility:** [Open Web Config](https://derrickthomin.github.io/Midi-Slider-Cherry/) — configure your LumaFader from the browser (Chrome/Edge, requires Web Serial)
 *   **Project Writeup:** [www.djbajablast.com/post/lumafader68](https://www.djbajablast.com/post/lumafader68)
 *   **Buy:** [Etsy - DJBB LumaFader 68](https://www.etsy.com/listing/1872693350/djbb-lumafader-68-midi-controller-rgb)
 
 ---
 
-## What's New (April 2026)
+## What's New
+V1.3 (June 2026)
+- **Record Modet** - New mode for recording slider movements to pads and playing them back
+- **MIDI Learn** - Efficiently map hardware device knobs and sliders 
 
+V 1.2 (April 2026)
 - **Multi-channel output** - send CC messages to multiple MIDI channels simultaneously using the `|` separator
 - **Aftertouch support** - channel pressure (aftertouch) messages now supported
 - **Web Config Utility** - configure settings directly from the browser via Web Serial (Chrome/Edge)
