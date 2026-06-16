@@ -250,9 +250,12 @@ class LightsManager:
                 controller.get_record_slot_states(). States: "empty",
                 "recording", "playing", "stopped", "delete_armed"; color is the
                 bank color for "stopped" slots.
-            set_flash (int): CC set index to flash after a set switch
-                (-1 = no flash). Sets 1-4 flash button pixel N-1 white;
-                set 0 briefly blanks all four button pixels.
+            set_flash (int): landed CC set index to flash (-1 = no flash). Sets
+                1+ flash that set's bank pixel ((set-1)%4) in the page's color
+                (RECORD_PAGE_FLASH_COLORS[(set-1)//4]); set 0 (global) briefly
+                blanks all four button pixels. The button position encodes the
+                bank and the color the page, so navigating up lands on bank 1
+                (bottom) and walks up, down lands on bank 4 (top) and walks down.
         """
         now = time.monotonic()
         for idx, (state, color) in enumerate(slot_states):
@@ -269,12 +272,15 @@ class LightsManager:
             else:  # empty
                 self.pixels[pixel_index] = (0, 0, 0)
 
-        # CC-set switch confirmation flash (overlays the slot states)
+        # CC-set navigation flash (overlays the slot states): light the landed
+        # set's bank button in the page color; the global set blanks all four.
         if set_flash == 0:
             for idx in range(4):
                 self.pixels[self.button_pixel_indices[idx]] = (0, 0, 0)
         elif set_flash > 0:
-            self.pixels[self.button_pixel_indices[set_flash - 1]] = cfg.RECORD_SET_FLASH_COLOR
+            bank = (set_flash - 1) % 4
+            page = (set_flash - 1) // 4
+            self.pixels[self.button_pixel_indices[bank]] = cfg.RECORD_PAGE_FLASH_COLORS[page]
 
     def update_mapping_mode(self, target_slider_idx, confirm_slider_idx, confirm_active,
                             confirm_failed, bank_button_idx=-1, bank_page_idx=0):

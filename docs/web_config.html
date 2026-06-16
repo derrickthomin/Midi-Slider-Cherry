@@ -303,6 +303,16 @@
             font-family: inherit; font-size: 12px;
             text-align: center;
         }
+        /* Remove number spinner arrows so 3-digit CC values (e.g. 127) aren't cut off */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
         .cc-input:focus { outline: none; border-color: #2a4a7a; }
         .cc-input.highlight {
             border-color: #d08020;
@@ -403,38 +413,6 @@
         .row-settings-panel.inherited .inherit-checkbox { opacity: 1; }
 
         .device-column { flex-shrink: 0; }
-
-        .right-settings-column { display: none; }
-
-        .settings-panel {
-            border: 1px solid #8a9ab8;
-            padding: 12px;
-            position: relative;
-        }
-        /* Spec label */
-        .settings-panel::before {
-            content: 'SPEC';
-            position: absolute;
-            top: -7px; left: 8px;
-            font-size: 8px; letter-spacing: 0.2em; color: #8a9ab8;
-            background: #faf9f6;
-            padding: 0 4px;
-        }
-        .settings-panel h3 {
-            font-size: 11px; font-weight: 600; color: #3a5a8a;
-            margin-bottom: 10px; letter-spacing: 0.1em; text-transform: uppercase;
-            display: flex; align-items: center; gap: 4px;
-        }
-        .settings-panel .panel-fields { display: flex; flex-direction: column; gap: 8px; }
-        .settings-panel .panel-field { display: flex; flex-direction: column; gap: 3px; }
-        .settings-panel .panel-field label { font-size: 10px; color: #7a8aaa; text-transform: uppercase; letter-spacing: 0.1em; }
-        .settings-panel .panel-field input,
-        .settings-panel .panel-field select {
-            padding: 6px 8px; border: 1px solid #8a9ab8; background: transparent;
-            color: #2a3a5a; font-family: inherit; font-size: 13px;
-        }
-        .settings-panel .panel-field input:focus,
-        .settings-panel .panel-field select:focus { outline: none; border-color: #2a4a7a; }
 
         .help-icon {
             display: inline-flex; align-items: center; justify-content: center;
@@ -578,7 +556,7 @@
             <form id="settingsForm">
                 <div class="top-settings collapsed" id="topSettings">
                     <div class="top-settings-toggle" id="topSettingsToggle">
-                        <h3>Global &amp; Page Settings <span class="help-icon">?<span class="help-tooltip">Default settings used when no bank overrides are set. Click to expand.</span></span></h3>
+                        <h3>Global <span class="help-icon">?<span class="help-tooltip">Default channel &amp; type used when no bank overrides are set. Click to expand.</span></span></h3>
                         <span class="chevron">&#9660;</span>
                     </div>
                     <div class="top-settings-body">
@@ -590,51 +568,30 @@
                             <label>Global Type</label>
                             <select id="globalType"><option value="CC">CC</option><option value="AT">AT</option></select>
                         </div>
-                        <div class="top-settings-divider"></div>
-                        <div class="top-settings-group">
-                            <label><span id="bankSettingsTitleText">Page 1</span> Channel</label>
-                            <input type="text" id="bankChannel" placeholder="-" title="Leave blank to use global">
-                        </div>
-                        <div class="top-settings-group">
-                            <label><span id="bankSettingsTitleText2">Page 1</span> Type</label>
-                            <select id="bankType"><option value="">-</option><option value="CC">CC</option><option value="AT">AT</option></select>
-                        </div>
-                        <div class="top-settings-group" style="justify-content:flex-end;">
-                            <div class="inherit-row">
-                                <input type="checkbox" id="bankInherit" class="inherit-checkbox" title="Inherit from global" style="width:14px;height:14px;margin:0;accent-color:#1a8a1a;">
-                                <label for="bankInherit">Inherit</label>
+                        <div id="recordModeFields" style="display:none;">
+                            <div class="top-settings-divider"></div>
+                            <div class="top-settings-group" title="Loop = repeats continuously. Hold = plays only while its pad is held.">
+                                <label>Loop Type</label>
+                                <select id="recLoopType">
+                                    <option value="loop">Loop</option>
+                                    <option value="hold">Hold</option>
+                                </select>
                             </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="top-settings collapsed" id="recordSettings" style="display:none;">
-                    <div class="top-settings-toggle" id="recordSettingsToggle">
-                        <h3>Record Mode <span class="help-icon">?<span class="help-tooltip">CC loop recorder: hold all 4 buttons for 3 seconds to enter/exit Record Mode on the device. Click to expand.</span></span></h3>
-                        <span class="chevron">&#9660;</span>
-                    </div>
-                    <div class="top-settings-body">
-                        <div class="top-settings-group">
-                            <label>Loop Type</label>
-                            <select id="recLoopType" title="Default mode for new loops: Loop repeats; Hold plays only while its pad is held (release stops it, snapping back if CC Reset is on)">
-                                <option value="loop">Loop</option>
-                                <option value="hold">Hold</option>
-                            </select>
-                        </div>
-                        <div class="top-settings-group">
-                            <label>CC Resolution</label>
-                            <input type="number" id="recCcResolution" min="0" max="127" value="0" title="Minimum value change to record an event. 0 = record every change that was sent">
-                        </div>
-                        <div class="top-settings-group" style="justify-content:flex-end;">
-                            <div class="inherit-row">
-                                <input type="checkbox" id="recTrimSilence" class="inherit-checkbox" checked title="Trim leading silence so the loop starts on the first fader movement" style="width:14px;height:14px;margin:0;accent-color:#1a8a1a;">
-                                <label for="recTrimSilence">Trim Silence</label>
+                            <div class="top-settings-group" title="Smallest value change that records a step. 0 = record every change.">
+                                <label>CC Resolution</label>
+                                <input type="number" id="recCcResolution" min="0" max="127" value="0">
                             </div>
-                        </div>
-                        <div class="top-settings-group" style="justify-content:flex-end;">
-                            <div class="inherit-row">
-                                <input type="checkbox" id="recCcReset" class="inherit-checkbox" checked title="On loop stop, re-send the last live fader values for the CCs the loop recorded ('bounce back')" style="width:14px;height:14px;margin:0;accent-color:#1a8a1a;">
-                                <label for="recCcReset">CC Reset</label>
+                            <div class="top-settings-group" style="justify-content:flex-end;" title="Skip leading silence so the loop starts on your first fader move.">
+                                <div class="inherit-row">
+                                    <input type="checkbox" id="recTrimSilence" class="inherit-checkbox" checked style="width:14px;height:14px;margin:0;accent-color:#1a8a1a;">
+                                    <label for="recTrimSilence">Trim Silence</label>
+                                </div>
+                            </div>
+                            <div class="top-settings-group" style="justify-content:flex-end;" title="When a loop stops, snap its CCs back to the first recorded CC value for this loop.">
+                                <div class="inherit-row">
+                                    <input type="checkbox" id="recCcReset" class="inherit-checkbox" checked style="width:14px;height:14px;margin:0;accent-color:#1a8a1a;">
+                                    <label for="recCcReset">CC Reset</label>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -762,32 +719,15 @@
                             </div>
                         </div>
 
-                        <div class="right-settings-column">
-                            <div class="settings-panel">
-                                <h3>Global <span class="help-icon">?<span class="help-tooltip">Default settings used when no row or bank overrides are set.</span></span></h3>
-                                <div class="panel-fields">
-                                    <div class="panel-field"><label>Channel</label><input type="text" id="globalChannel" value="1" title="1-16, or multi like 1|2|3"></div>
-                                    <div class="panel-field"><label>Type</label><select id="globalType"><option value="CC">CC</option><option value="AT">AT</option></select></div>
-                                </div>
-                            </div>
-                            <div class="settings-panel">
-                                <h3><span id="bankSettingsTitleText">Page 1</span> <span class="help-icon">?<span class="help-tooltip">Page-level defaults. Banks inherit from here if their values are blank.</span></span></h3>
-                                <div class="panel-fields">
-                                    <div class="panel-field" style="flex-direction:row;align-items:center;gap:8px;">
-                                        <input type="checkbox" id="bankInherit" class="inherit-checkbox" title="Inherit from global">
-                                        <label for="bankInherit" style="font-size:11px;">Inherit</label>
-                                    </div>
-                                    <div class="panel-field"><label>Channel</label><input type="text" id="bankChannel" placeholder="-" title="Leave blank to use global"></div>
-                                    <div class="panel-field"><label>Type</label><select id="bankType"><option value="">-</option><option value="CC">CC</option><option value="AT">AT</option></select></div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                     <span class="last-midi" id="lastMidi">Last MIDI In: —</span>
                 </div>
 
                 <div class="actions">
                     <button type="submit" class="save">Save Settings</button>
+                    <button type="button" id="downloadBackupBtn">Download Backup</button>
+                    <button type="button" id="restoreBackupBtn">Restore Backup</button>
+                    <input type="file" id="restoreFileInput" accept="application/json,.json" style="display:none">
                 </div>
             </form>
         </div>
@@ -832,7 +772,7 @@
 
             <h3>Record Mode</h3>
             <p>Hold <strong>all 4 buttons for 3 seconds</strong> to enter or exit Record Mode (the button LEDs fill red as you hold). In Record Mode the buttons become 4 loop slots: <strong>double-click</strong> an empty slot to record fader movement, <strong>single-click</strong> to stop recording (the loop plays) or to play/stop an existing loop, and <strong>double-click a loop then click it again</strong> to delete it (blinking red asks for confirmation). Step between the global bank and Page 1's four banks with the page-change gesture. Loops live in RAM only and are cleared on power-cycle.</p>
-            <p><strong>Loop Type</strong> — Loop repeats; Hold plays only while its pad is held (release stops it, snapping back when CC Reset is on).<br>
+            <p><strong>Loop Type</strong> — Loop repeats; Hold plays only while its pad is held (release stops it).<br>
             <strong>CC Resolution</strong> — minimum value change to record an event (0 = record everything sent).<br>
             <strong>Trim Silence</strong> — start the loop on the first fader movement.<br>
             <strong>CC Reset</strong> — when a loop stops, re-send the last live fader values for the CCs it recorded ("bounce back").</p>
@@ -920,8 +860,8 @@
                 probed: true,
             };
 
-            const recordSection = document.getElementById('recordSettings');
-            if (recordSection) recordSection.style.display = supportsRecordMode() ? '' : 'none';
+            const recordSection = document.getElementById('recordModeFields');
+            if (recordSection) recordSection.style.display = supportsRecordMode() ? 'contents' : 'none';
             if (!supportsRecordMode()) removeRecordModeKeys();
 
             const enabled = supportsPerSliderChannels();
@@ -996,17 +936,6 @@
             });
         }
 
-        document.getElementById('bankInherit').addEventListener('change', function() {
-            const channelInput = document.getElementById('bankChannel');
-            const typeSelect = document.getElementById('bankType');
-            if (this.checked) {
-                channelInput.value = ''; typeSelect.value = '';
-                channelInput.disabled = true; typeSelect.disabled = true;
-            } else {
-                channelInput.disabled = false; typeSelect.disabled = false;
-            }
-        });
-
         function updateLearnButtonStates() {
             document.querySelectorAll('.slider-learn-btn').forEach(btn => {
                 const sliderIdx = parseInt(btn.dataset.slider);
@@ -1047,10 +976,40 @@
             btn.addEventListener('click', () => startLearn(parseInt(btn.dataset.slider)));
         });
 
+        // ---- Input validation: keep CC values in 0-127 and channels in 1-16 ----
+        function clampInt(val, min, max) { return Math.max(min, Math.min(max, val)); }
+
+        const CC_VALUE_INPUTS = ['sliderCC0', 'sliderCC1', 'sliderCC2', 'sliderCC3', 'recCcResolution'];
+        CC_VALUE_INPUTS.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            // Strip non-digits while typing
+            el.addEventListener('input', () => { el.value = el.value.replace(/[^0-9]/g, ''); });
+            // Clamp to 0-127 when the field loses focus
+            el.addEventListener('blur', () => {
+                if (el.value === '') return;
+                el.value = clampInt(parseInt(el.value, 10) || 0, 0, 127);
+            });
+        });
+
+        // Channel fields are text (blank = inherit, single 1-16, or multi like 1|2|3)
+        const CHANNEL_INPUTS = ['globalChannel', 'rowChannel0', 'rowChannel1', 'rowChannel2', 'rowChannel3', 'sliderCh0', 'sliderCh1', 'sliderCh2', 'sliderCh3'];
+        CHANNEL_INPUTS.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            // Allow only digits and pipe separators while typing
+            el.addEventListener('input', () => { el.value = el.value.replace(/[^0-9|]/g, ''); });
+            // Clamp each channel segment to 1-16, drop empty segments
+            el.addEventListener('blur', () => {
+                const parts = el.value.split('|')
+                    .map(s => s.trim())
+                    .filter(s => s !== '')
+                    .map(s => String(clampInt(parseInt(s, 10) || 1, 1, 16)));
+                el.value = parts.join('|');
+            });
+        });
+
         function updateBankIndicator() {
-            document.getElementById('bankSettingsTitleText').textContent = `Page ${currentPage + 1}`;
-            const titleText2 = document.getElementById('bankSettingsTitleText2');
-            if (titleText2) titleText2.textContent = `Page ${currentPage + 1}`;
             document.getElementById('captionPage').textContent = `Pg ${currentPage + 1}`;
             document.getElementById('captionBank').textContent = currentBank === -1 ? 'Global' : `Bank ${currentBank + 1}`;
             document.querySelectorAll('.page-tab').forEach(tab => {
@@ -1137,20 +1096,6 @@
                 typeSelect.disabled = shouldInherit;
                 panel.classList.toggle('inherited', shouldInherit);
             }
-
-            const pageChKey = `PAGE_${currentPage + 1}_CHANNEL`;
-            const pageTyKey = `PAGE_${currentPage + 1}_TYPE`;
-            const pageChVal = settings[pageChKey] || '';
-            const pageTyVal = settings[pageTyKey] || '';
-            const bankInheritCheckbox = document.getElementById('bankInherit');
-            const bankChannelInput = document.getElementById('bankChannel');
-            const bankTypeSelect = document.getElementById('bankType');
-            const pageShouldInherit = pageChVal === '' && pageTyVal === '';
-            bankInheritCheckbox.checked = pageShouldInherit;
-            bankChannelInput.value = pageChVal;
-            bankTypeSelect.value = pageTyVal;
-            bankChannelInput.disabled = pageShouldInherit;
-            bankTypeSelect.disabled = pageShouldInherit;
         }
 
         function saveCurrentCCValues() {
@@ -1192,11 +1137,6 @@
                 settings[bankChKey][i] = inheritChecked ? '' : document.getElementById('rowChannel' + i).value;
                 settings[bankTyKey][i] = inheritChecked ? '' : document.getElementById('rowType' + i).value;
             }
-            const pageChKey = `PAGE_${currentPage + 1}_CHANNEL`;
-            const pageTyKey = `PAGE_${currentPage + 1}_TYPE`;
-            const bankInheritChecked = document.getElementById('bankInherit').checked;
-            settings[pageChKey] = bankInheritChecked ? '' : document.getElementById('bankChannel').value;
-            settings[pageTyKey] = bankInheritChecked ? '' : document.getElementById('bankType').value;
         }
 
         function jumpToBank(bankIdx, focusChannel = false) {
@@ -1236,6 +1176,13 @@
 
         connectBtn.addEventListener('click', async () => { if (port) await disconnect(); else await connect(); });
 
+        // Detect a physical unplug of the connected device and return to the connect screen.
+        if (navigator.serial) {
+            navigator.serial.addEventListener('disconnect', (event) => {
+                if (port && event.target === port) handlePhysicalDisconnect();
+            });
+        }
+
         async function connect() {
             try {
                 markLegacyFirmwareCapabilities();
@@ -1265,15 +1212,33 @@
                 if (reader) { await reader.cancel(); reader.releaseLock(); reader = null; }
                 if (writer) { writer.releaseLock(); writer = null; }
                 if (port) { await port.close(); port = null; }
-                statusBadge.textContent = 'Disconnected';
-                statusBadge.className = 'status disconnected';
-                connectBtn.textContent = 'Connect';
-                settingsForm.classList.remove('loaded');
-                loadingMsg.style.display = 'block';
-                document.querySelector('.instructions').classList.remove('hidden');
-                settings = null;
-                markLegacyFirmwareCapabilities();
+                resetToConnectScreen();
             } catch (err) { console.error('Disconnect error:', err); }
+        }
+
+        // Reset the UI back to the initial "Connect" screen.
+        function resetToConnectScreen() {
+            statusBadge.textContent = 'Disconnected';
+            statusBadge.className = 'status disconnected';
+            connectBtn.textContent = 'Connect';
+            settingsForm.classList.remove('loaded');
+            loadingMsg.style.display = 'block';
+            document.querySelector('.instructions').classList.remove('hidden');
+            settings = null;
+            markLegacyFirmwareCapabilities();
+        }
+
+        // Device was physically unplugged (or otherwise lost). Tear down without
+        // talking to the now-absent port, then return to the connect screen.
+        async function handlePhysicalDisconnect() {
+            if (statusPollInterval) { clearInterval(statusPollInterval); statusPollInterval = null; }
+            if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+            try { if (reader) { await reader.cancel().catch(() => {}); reader.releaseLock(); } } catch (e) {}
+            try { if (writer) { writer.releaseLock(); } } catch (e) {}
+            try { if (port) { await port.close().catch(() => {}); } } catch (e) {}
+            reader = null; writer = null; port = null;
+            resetToConnectScreen();
+            showToast('Device disconnected', 'error');
         }
 
         async function sendCommand(cmd) { if (!writer) return; await writer.write(new TextEncoder().encode('CMD:' + cmd + '\n')); }
@@ -1363,10 +1328,6 @@
             document.getElementById('topSettings').classList.toggle('collapsed');
         });
 
-        document.getElementById('recordSettingsToggle').addEventListener('click', () => {
-            document.getElementById('recordSettings').classList.toggle('collapsed');
-        });
-
         document.querySelectorAll('.device-button').forEach(btn => {
             btn.addEventListener('click', () => { const idx = parseInt(btn.dataset.btn); const newBank = (currentBank === idx) ? -1 : idx; jumpToBank(newBank, newBank >= 0); });
         });
@@ -1392,6 +1353,57 @@
             await sendCommand('SET_SETTINGS|' + JSON.stringify(data));
             showToast('Settings saved! Unplug and re-plug the device to apply.', 'success', 2000);
         });
+
+        // --- Backup download / restore -------------------------------------
+        // Download dumps the current settings (including unsaved form edits) to
+        // a .json file. No device round-trip - the page already holds the full
+        // settings object loaded from CMD:GET_SETTINGS.
+        document.getElementById('downloadBackupBtn').addEventListener('click', () => {
+            if (!settings || !settingsForm.classList.contains('loaded')) {
+                showToast('Connect and load settings before downloading a backup.', 'error');
+                return;
+            }
+            const data = collectFormData();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+            a.href = url;
+            a.download = 'lumafader-settings-' + stamp + '.json';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            showToast('Backup downloaded.', 'success');
+        });
+
+        // Restore loads a backup file into the form (basic sanity check only).
+        // The device still validates the JSON on the SET_SETTINGS write, so the
+        // user reviews the loaded values and clicks Save Settings to apply.
+        document.getElementById('restoreBackupBtn').addEventListener('click', () => {
+            document.getElementById('restoreFileInput').click();
+        });
+        document.getElementById('restoreFileInput').addEventListener('change', (e) => {
+            const file = e.target.files && e.target.files[0];
+            e.target.value = '';  // let the same file be picked again later
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                let parsed;
+                try { parsed = JSON.parse(reader.result); }
+                catch (err) { showToast('Not a valid JSON file.', 'error'); return; }
+                if (!parsed || typeof parsed !== 'object' || parsed.GLOBAL_CC_BANK === undefined) {
+                    showToast('This does not look like a LumaFader settings file.', 'error');
+                    return;
+                }
+                settings = parsed;
+                populateForm(parsed);
+                showToast('Backup loaded — review, then click Save Settings to write to the device.', 'success', 3500);
+            };
+            reader.onerror = () => showToast('Could not read the file.', 'error');
+            reader.readAsText(file);
+        });
+
         window.addEventListener('beforeunload', disconnect);
     </script>
 </body>

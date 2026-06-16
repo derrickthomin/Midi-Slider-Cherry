@@ -69,9 +69,12 @@ while True:
     elif midi_controller.record_mode_active:
         # Record Mode owns the button pixels (the normal update_buttons /
         # indicate_locked_bank calls would overwrite them every frame)
-        lights_manager.update_slider_lights(sliders, midi_controller.record_display_bank_idx, 0)
+        lights_manager.update_slider_lights(
+            sliders, midi_controller.record_display_bank_idx,
+            midi_controller.record_display_page_idx)
         lights_manager.update_record_mode_buttons(
-            midi_controller.get_record_slot_states(), midi_controller.get_set_flash())
+            midi_controller.get_record_slot_states(),
+            midi_controller.get_set_flash())
     else:
         bank_idx = midi_controller.current_bank_idx
         page_idx = midi_controller.current_page_idx

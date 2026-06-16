@@ -85,7 +85,9 @@ class MidiController:
         self._rec_nav_active = False
         self._rec_nav_exit_button_idx = -1
 
-        # CC-set switch white flash (optional polish, 3d)
+        # CC-set navigation flash (3d): _set_flash_set_idx is the landed set,
+        # flashed on its bank button in the page's color (global blanks all four)
+        # for RECORD_SET_FLASH_S.
         self._set_flash_time = 0.0
         self._set_flash_set_idx = -1
 
@@ -984,31 +986,43 @@ class MidiController:
         self._slot_pending_record[slot_idx] = False
 
     def _step_record_set(self, direction):
+        new_idx = self.record_cc_set_idx + direction
+        # No wrap: clamp at the ends - stepping past global or the last page's
+        # last bank does nothing.
+        if new_idx < 0 or new_idx >= cfg.NUM_RECORD_CC_SETS:
+            return
         self._cancel_delete_arm(restore=True)
-        self.record_cc_set_idx = (self.record_cc_set_idx + direction) % cfg.NUM_RECORD_CC_SETS
+        self.record_cc_set_idx = new_idx
         self.update_record_slider_assignments()
+
+        # Navigation flash: the lights light the landed set's bank button in the
+        # page's color (the global set blanks all four). Button position encodes
+        # the bank, color encodes the page, so going up lands on bank 1 (bottom)
+        # and walks up, going down lands on bank 4 (top) and walks down.
         self._set_flash_set_idx = self.record_cc_set_idx
         self._set_flash_time = time.monotonic()
 
     def _record_set_lookup(self, slider_idx):
         """
         Resolve the active record CC set for one slider.
-        Set 0 = global bank; sets 1-4 = page 1's banks (page index 0 lookups).
+        Set 0 = global bank; sets 1+ = page (set-1)//4, bank (set-1)%4.
 
         Returns:
-            (cc_number, channels, message_type, bank_idx) - bank_idx is -1 for global.
+            (cc_number, channels, message_type, bank_idx, page_idx) - bank_idx
+            is -1 for global; page_idx is 0 for global (AT tracking key).
         """
         set_idx = self.record_cc_set_idx
         if set_idx == 0:
             return (cfg.GLOBAL_CC_BANK[slider_idx],
                     self.global_slider_channels[slider_idx],
                     self.global_message_type,
-                    -1)
-        bank_idx = set_idx - 1
-        return (self.pages[0][bank_idx][slider_idx],
-                self.channel_lookup[0][bank_idx][slider_idx],
-                self.type_lookup[0][bank_idx],
-                bank_idx)
+                    -1, 0)
+        page_idx = (set_idx - 1) // 4
+        bank_idx = (set_idx - 1) % 4
+        return (self.pages[page_idx][bank_idx][slider_idx],
+                self.channel_lookup[page_idx][bank_idx][slider_idx],
+                self.type_lookup[page_idx][bank_idx],
+                bank_idx, page_idx)
 
     def update_record_slider_assignments(self):
         """
@@ -1017,12 +1031,12 @@ class MidiController:
         set change, including Record Mode entry.
         """
         for idx, slider in enumerate(self.sliders):
-            cc_number, channels, message_type, bank_idx = self._record_set_lookup(idx)
+            cc_number, channels, message_type, bank_idx, page_idx = self._record_set_lookup(idx)
             slider.current_assigned_cc_number = cc_number
             slider.additional_assigned_cc_numbers = []
 
             if message_type == "AT":
-                last_sent = midi_manager.get_last_at_value_per_slider(idx, 0, bank_idx)
+                last_sent = midi_manager.get_last_at_value_per_slider(idx, page_idx, bank_idx)
             else:
                 last_sent = midi_manager.get_last_cc_value_sent(cc_number, channels[0])
             slider.crossing_cc_value = last_sent
@@ -1102,6 +1116,15 @@ class MidiController:
             # Switching from another recording slot finalizes that recording
             # first (inside LoopManager.start_recording)
             self.loop_manager.start_recording(slot_idx, self.record_cc_set_idx)
+            # Re-arm pickup on every record start (comment 1): a slider that
+            # already "crossed" in a prior interaction would otherwise send (and
+            # record) from its current position immediately - i.e. behave like
+            # jump mode. After re-arming, a drifted slider must move past its
+            # last-sent value before it records; that pre-pickup motion is not
+            # captured (the record tap in send_record_mode_cc runs only after
+            # should_send_cc passes) and Trim Silence drops it as lead-in.
+            # Jump Mode still short-circuits should_send_cc, so it's unaffected.
+            self.update_record_slider_assignments()
             # Ignore presses within the double-press window after starting a
             # recording (symmetric with stop-recording, 3b) - prevents a bouncy
             # third tap from immediately single-click stopping the new recording.
@@ -1174,15 +1197,15 @@ class MidiController:
             if not slider.cc_value_changed:
                 continue
 
-            cc_number, channels, message_type, bank_idx = self._record_set_lookup(slider_idx)
+            cc_number, channels, message_type, bank_idx, page_idx = self._record_set_lookup(slider_idx)
 
             if not self.should_send_cc(slider, slider_idx, channels[0], message_type,
-                                       bank_idx, page_idx=0):
+                                       bank_idx, page_idx=page_idx):
                 continue
 
             value = slider.cc_value
             if message_type == "AT":
-                midi_manager.send_aftertouch(channels, value, slider_idx, 0, bank_idx)
+                midi_manager.send_aftertouch(channels, value, slider_idx, page_idx, bank_idx)
                 if recording_loop is not None:
                     for channel in channels:
                         recording_loop.add_aftertouch(value, channel)
@@ -1252,13 +1275,14 @@ class MidiController:
                 if set_idx == 0:
                     color = cfg.GLOBAL_BANK_COLOR
                 else:
-                    color = cfg.PAGE_COLORS[0][set_idx - 1]
+                    color = cfg.PAGE_COLORS[(set_idx - 1) // 4][(set_idx - 1) % 4]
             states.append((state, color))
         return states
 
     def get_set_flash(self):
-        """CC-set switch flash for the lights (3d polish): the set index to
-        flash, or -1 when no flash is active."""
+        """CC-set navigation flash (3d): the landed set index to flash, or -1
+        when no flash is active. The lights render it on the set's bank button
+        in the page color (set 0 / global blanks all four buttons)."""
         if self._set_flash_set_idx == -1:
             return -1
         if time.monotonic() - self._set_flash_time > cfg.RECORD_SET_FLASH_S:
@@ -1268,9 +1292,18 @@ class MidiController:
 
     @property
     def record_display_bank_idx(self):
-        """Active record set mapped to a bank index for the slider lights
-        (page 0); -1 = global."""
-        return self.record_cc_set_idx - 1
+        """Active record set mapped to a bank index for the slider lights;
+        -1 = global."""
+        if self.record_cc_set_idx == 0:
+            return -1
+        return (self.record_cc_set_idx - 1) % 4
+
+    @property
+    def record_display_page_idx(self):
+        """Page index the active record set lives on (0 for the global set)."""
+        if self.record_cc_set_idx == 0:
+            return 0
+        return (self.record_cc_set_idx - 1) // 4
 
     # ==================== Mapping Mode (on-device MIDI learn) ====================
 
