@@ -1,4 +1,4 @@
-# Version 1.20
+# Version 1.3
 
 import time
 import board
