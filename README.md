@@ -28,7 +28,7 @@ The LumaFader 68 is a compact MIDI controller featuring four long-throw faders, 
 
 Use the [Web Config Utility](https://derrickthomin.github.io/Midi-Slider-Cherry/) to configure your LumaFader (Chrome/Edge, requires Web Serial). You can also edit `settings.json` directly -- see the user manual for details on the JSON structure.
 
-<img width="500" height="1182" alt="Web Settings Interface" src="https://github.com/user-attachments/assets/b8ba807f-c97e-4158-9761-0b9c1cd95882" />
+<img width="500" height="" alt="Web Settings Interface" src="https://github.com/user-attachments/assets/b8ba807f-c97e-4158-9761-0b9c1cd95882" />
 
 ### Channel Inheritance
 
@@ -59,7 +59,7 @@ For example you can set `GLOBAL_CHANNEL`1` to `"1|2|3|4"`
 
 The boot button is on the bottom PCB. See the image below for where it is located. I usually just stick a screwdriver through the hole in the case for the USB and use that to press the button. Alternaltivly you can take the top panel off with an m3 hex key.
 
-<img width="450" height="1246" alt="Show Boot Button" src="https://github.com/user-attachments/assets/2fdeeb8c-3297-4982-aabe-627f1dcd7ce0" />
+<img width="450" height="" alt="Show Boot Button" src="https://github.com/user-attachments/assets/2fdeeb8c-3297-4982-aabe-627f1dcd7ce0" />
 
 ### Steps
 
@@ -72,3 +72,8 @@ The boot button is on the bottom PCB. See the image below for where it is locate
 4. **Copy source files:** Copy the entire contents of the `src/` folder onto the **CIRCUITPY** drive. This includes all `.py` files, `settings.json`, and the `lib/` folder. Overwrite if prompted.
 
 5. **Done.** Unplug the LumaFader and plug it back in.
+
+
+## Alternate Firmware
+Note that I have not personally used or tested these unless otherwise noted, so use at your own risk. You can always re-flash the original firmware if needed.
+- If you are a BitWig user, check out this sweet project by @Naenyn! https://github.com/Naenyn/LumaFader-Bitwig
