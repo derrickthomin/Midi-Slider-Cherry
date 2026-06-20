@@ -91,6 +91,12 @@ class MidiController:
         self._set_flash_time = 0.0
         self._set_flash_set_idx = -1
 
+        # Low-memory record-reject feedback: a refused record-start (free RAM
+        # below START_RECORD_FLOOR) triple-blinks the pad red instead of
+        # recording. -1 = no blink active.
+        self._reject_blink_slot = -1
+        self._reject_blink_start = 0.0
+
         # ==================== Mapping Mode state (on-device MIDI learn) ====================
         self.mapping_mode_active = False
         self.mapping_scope = None          # ("global",) or ("bank", page_idx, bank_idx)
@@ -871,6 +877,7 @@ class MidiController:
     def _enter_record_mode(self):
         self.record_mode_active = True
         self.record_cc_set_idx = 0  # Always start in the global set
+        self.loop_manager.set_active_set(0)  # 4 pads per set; start on the global set's pads
         self.update_record_slider_assignments()
 
     def _exit_record_mode(self):
@@ -883,8 +890,9 @@ class MidiController:
 
         self._cancel_delete_arm(restore=False)
 
-        for slot_idx in range(4):
-            self._stop_loop_with_reset(slot_idx)
+        # Stop every loop in every set (they stay in RAM across record sessions).
+        for loop in self.loop_manager.iter_all_loops():
+            self._stop_loop_obj_with_reset(loop)
 
         # Normal-mode page/bank state was never touched (gotcha 9.3); just
         # restore the sliders' normal CC assignments and pickup tracking.
@@ -992,7 +1000,17 @@ class MidiController:
         if new_idx < 0 or new_idx >= cfg.NUM_RECORD_CC_SETS:
             return
         self._cancel_delete_arm(restore=True)
+        # Finalize any in-flight recording as a single-click-stop before leaving
+        # the bank (4d): otherwise send_record_mode_cc would keep taping the
+        # recording loop with the NEW bank's CC assignments, corrupting it.
+        if self.loop_manager.is_recording:
+            self.loop_manager.stop_recording()
+        # Stop "hold" loops in the bank we're leaving - their pads are no longer
+        # addressable from another bank (plan 2c). "loop" loops keep playing.
+        self._stop_hold_loops_in_active_set()
+
         self.record_cc_set_idx = new_idx
+        self.loop_manager.set_active_set(new_idx)  # slot ops now address this set's 4 pads
         self.update_record_slider_assignments()
 
         # Navigation flash: the lights light the landed set's bank button in the
@@ -1114,8 +1132,13 @@ class MidiController:
         if self._slot_pending_record[slot_idx]:
             self._slot_pending_record[slot_idx] = False
             # Switching from another recording slot finalizes that recording
-            # first (inside LoopManager.start_recording)
-            self.loop_manager.start_recording(slot_idx, self.record_cc_set_idx)
+            # first (inside LoopManager.start_recording). start_recording returns
+            # False if it refused for low memory - the pad triple-blinks instead
+            # of recording (the slot stays empty).
+            if not self.loop_manager.start_recording(slot_idx, self.record_cc_set_idx):
+                self._trigger_reject_blink(slot_idx, now)
+                self._slot_last_press_time[slot_idx] = 0.0
+                return
             # Re-arm pickup on every record start (comment 1): a slider that
             # already "crossed" in a prior interaction would otherwise send (and
             # record) from its current position immediately - i.e. behave like
@@ -1219,14 +1242,13 @@ class MidiController:
 
     def process_loop_playback(self):
         """
-        Playback pump: collect due events from every slot and send them.
-        Safe to call unconditionally - stopped/recording loops return None.
-        Playback goes through midi_manager so its de-dupe and pickup state
-        stay consistent with reality (gotcha 9.6).
+        Playback pump: collect due events from every loop in EVERY set and send
+        them - loops recorded in other banks keep playing while a different bank
+        is on screen (layered multi-bank looper). Safe to call unconditionally -
+        stopped/recording loops return None. Playback goes through midi_manager
+        so its de-dupe and pickup state stay consistent with reality (gotcha 9.6).
         """
-        for loop in self.loop_manager.loops:
-            if loop is None:
-                continue
+        for loop in self.loop_manager.iter_all_loops():
             events = loop.get_new_events()
             if not events:
                 continue
@@ -1237,15 +1259,27 @@ class MidiController:
                 midi_manager.send_aftertouch([channel], pressure)
 
     def _stop_loop_with_reset(self, slot_idx):
-        """Stop a slot's loop; if cc_reset is enabled, snap back to the loop's
-        first recorded values for exactly the (CC, channel) pairs it recorded (3e)."""
-        loop = self.loop_manager.loops[slot_idx]
-        if loop is None:
+        """Stop a slot's loop in the active set; if cc_reset is enabled, snap back
+        to the loop's first recorded values for exactly the (CC, channel) pairs it
+        recorded (3e)."""
+        self._stop_loop_obj_with_reset(self.loop_manager.loops[slot_idx])
+
+    def _stop_loop_obj_with_reset(self, loop):
+        """Stop a loop object (any set) with the same cc_reset snap-back as
+        _stop_loop_with_reset. Used for all-set cleanup / hold-stop-on-leave."""
+        if loop is None or loop.is_recording:
             return
-        was_playing = loop.loop_is_playing and not loop.is_recording
-        self.loop_manager.toggle_playstate(slot_idx, False)
+        was_playing = loop.loop_is_playing
+        loop.toggle_playstate(False)
         if was_playing and settings.get_cc_reset():
             self._send_cc_reset(loop)
+
+    def _stop_hold_loops_in_active_set(self):
+        """Stop playing "hold" loops in the active set (called when navigating
+        away from a bank, plan 2c). "loop" loops are left running."""
+        for loop in self.loop_manager.loops:
+            if loop is not None and loop.loop_type == "hold" and loop.loop_is_playing:
+                self._stop_loop_obj_with_reset(loop)
 
     def _send_cc_reset(self, loop):
         for (cc_number, channel), first_value in loop._first_cc_values.items():
@@ -1257,26 +1291,17 @@ class MidiController:
 
     def get_record_slot_states(self):
         """
-        Per-slot display state for the LightsManager (3d).
-
-        Returns:
-            list of (state, color) for slots 0-3. color is only meaningful for
-            "stopped" (the bank color of the set active at record start).
+        Per-slot display state (active set) for the LightsManager (3d): one of
+        "empty", "recording", "playing", "stopped", "delete_armed" per slot.
+        The lights pick the color (stopped renders white, RECORD_STOPPED_COLOR,
+        so state reads independently of the bank's own color).
         """
         states = []
         for slot_idx in range(4):
             if slot_idx == self._delete_armed_slot:
-                states.append(("delete_armed", None))
-                continue
-            state = self.loop_manager.get_slot_state(slot_idx)
-            color = None
-            if state == SLOT_STOPPED:
-                set_idx = self.loop_manager.loops[slot_idx].cc_set_idx
-                if set_idx == 0:
-                    color = cfg.GLOBAL_BANK_COLOR
-                else:
-                    color = cfg.PAGE_COLORS[(set_idx - 1) // 4][(set_idx - 1) % 4]
-            states.append((state, color))
+                states.append("delete_armed")
+            else:
+                states.append(self.loop_manager.get_slot_state(slot_idx))
         return states
 
     def get_set_flash(self):
@@ -1289,6 +1314,25 @@ class MidiController:
             self._set_flash_set_idx = -1
             return -1
         return self._set_flash_set_idx
+
+    def _trigger_reject_blink(self, slot_idx, now):
+        """Start (or restart) the low-memory reject blink on `slot_idx`.
+        Idempotent: a repeated refused-start just resets the timer (plan 4i)."""
+        self._reject_blink_slot = slot_idx
+        self._reject_blink_start = now
+
+    def get_reject_blink(self):
+        """Low-memory record-reject feedback for the lights: (slot_idx, on) while
+        the 3x red blink plays, else (-1, False). Self-clears after 3 on/off
+        cycles. Phase derived purely from elapsed time so it's non-blocking."""
+        if self._reject_blink_slot == -1:
+            return (-1, False)
+        elapsed = time.monotonic() - self._reject_blink_start
+        if elapsed >= cfg.RECORD_REJECT_BLINK_S * 6:  # 3 on + 3 off
+            self._reject_blink_slot = -1
+            return (-1, False)
+        on = int(elapsed / cfg.RECORD_REJECT_BLINK_S) % 2 == 0
+        return (self._reject_blink_slot, on)
 
     @property
     def record_display_bank_idx(self):

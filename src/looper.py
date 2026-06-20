@@ -212,7 +212,9 @@ class MidiLoop:
         if not self.is_recording or self.start_timestamp == 0:
             return None
 
-        if events_length >= cfg.MAX_LOOP_EVENTS:
+        # Cap on TOTAL events (cc + at), not per-storage, so a pad mixing CC and
+        # aftertouch can't silently hold up to 2x MAX_LOOP_EVENTS (plan 4g).
+        if self.count_events() >= cfg.MAX_LOOP_EVENTS:
             self.max_events_reached = True
             return None
 

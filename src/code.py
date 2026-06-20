@@ -74,7 +74,8 @@ while True:
             midi_controller.record_display_page_idx)
         lights_manager.update_record_mode_buttons(
             midi_controller.get_record_slot_states(),
-            midi_controller.get_set_flash())
+            midi_controller.get_set_flash(),
+            midi_controller.get_reject_blink())
     else:
         bank_idx = midi_controller.current_bank_idx
         page_idx = midi_controller.current_page_idx

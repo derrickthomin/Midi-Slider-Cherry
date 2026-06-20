@@ -1,19 +1,28 @@
 """
-Off-device unit tests for the Record Mode loop engine (looper.py +
-loopmanager.py). The engine has no hardware dependencies, so this runs under
-plain CPython with a fake millisecond clock.
+Unit tests for the Record Mode loop engine (looper.py + loopmanager.py). The
+engine has no hardware dependencies, so it runs both ON-DEVICE (CircuitPython,
+e.g. copy to the Pico and run in Thonny) and OFF-DEVICE (plain CPython) with a
+fake millisecond clock.
 
-Run from the repo:
+Off-device (CPython):
     cd "Code - Production/src" && python3 ../scripts/test_record_engine.py
+On-device (CircuitPython / Thonny):
+    copy this file to the device alongside looper.py etc. and run it
+    (or: >>> import test_record_engine)
 """
 
-import os
 import sys
 
-# Run with src/ as cwd so settings.json resolves; allow running from anywhere
-SRC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")
-os.chdir(SRC_DIR)
-sys.path.insert(0, SRC_DIR)
+# Off-device (CPython) only: add src/ to the path and cd into it so
+# settings.json resolves. CircuitPython's os has no path/chdir and the engine
+# modules are already importable from the device root, so skip this there.
+try:
+    import os
+    SRC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")
+    os.chdir(SRC_DIR)
+    sys.path.insert(0, SRC_DIR)
+except (AttributeError, NameError):
+    pass  # CircuitPython: no os.path/os.chdir/__file__ - imports resolve directly
 
 import looper
 import loopmanager
@@ -387,6 +396,150 @@ def test_ticks_wraparound():
     mgr.delete_loop(0)
 
 
+def test_per_set_isolation():
+    print("each CC set has its own 4 pads (per-bank pads)")
+    mgr = fresh_manager()
+
+    # Record into set 0, slot 0
+    mgr.set_active_set(0)
+    mgr.start_recording(0, cc_set_idx=0)
+    clock.advance(10)
+    mgr.get_recording_loop().add_cc(1, 10, 0)
+    clock.advance(100)
+    mgr.stop_recording()
+    check(mgr.get_slot_state(0) == SLOT_PLAYING, "set 0 slot 0 has a loop")
+
+    # Navigate to set 1: its slot 0 is a FRESH, empty pad
+    mgr.set_active_set(1)
+    check(mgr.get_slot_state(0) == SLOT_EMPTY, "set 1 slot 0 is fresh/empty")
+    mgr.start_recording(0, cc_set_idx=1)
+    clock.advance(10)
+    mgr.get_recording_loop().add_cc(2, 20, 0)
+    clock.advance(100)
+    mgr.stop_recording()
+    check(mgr.get_slot_state(0) == SLOT_PLAYING, "set 1 slot 0 now has its own loop")
+    check(mgr.loops[0].cc_set_idx == 1, "set 1 loop stamped with its cc_set_idx")
+
+    # Back to set 0: its loop is still there and distinct
+    mgr.set_active_set(0)
+    check(mgr.get_slot_state(0) == SLOT_PLAYING, "set 0 loop survived navigation")
+    check(mgr.loops[0].cc_set_idx == 0, "set 0 loop is the original one")
+    mgr.clear_all()
+
+
+def test_iter_all_loops_spans_sets():
+    print("iter_all_loops / playback spans every set (layered looper)")
+    mgr = fresh_manager()
+    for set_idx in (0, 2, 5):
+        mgr.set_active_set(set_idx)
+        mgr.start_recording(0, cc_set_idx=set_idx)
+        clock.advance(10)
+        mgr.get_recording_loop().add_cc(set_idx + 1, 30, 0)
+        clock.advance(100)
+        mgr.stop_recording()
+    all_loops = list(mgr.iter_all_loops())
+    check(len(all_loops) == 3, "iter_all_loops sees loops from all 3 sets")
+    sets_seen = sorted(l.cc_set_idx for l in all_loops)
+    check(sets_seen == [0, 2, 5], "loops from every recorded set are yielded")
+
+
+def test_recording_global_single_across_sets():
+    print("recording is global-single: switching sets finalizes the prior one")
+    mgr = fresh_manager()
+    mgr.set_active_set(0)
+    mgr.start_recording(0, cc_set_idx=0)
+    clock.advance(10)
+    mgr.get_recording_loop().add_cc(1, 50, 0)
+    clock.advance(50)
+    check(mgr.recording_set == 0 and mgr.recording_slot == 0, "recording in set 0")
+
+    # Navigate + start recording in set 1: set 0's recording is finalized
+    mgr.set_active_set(1)
+    mgr.start_recording(0, cc_set_idx=1)
+    check(mgr.recording_set == 1, "recording moved to set 1")
+    check(not mgr.is_recording or mgr.recording_set == 1, "only one recording at a time")
+    mgr.set_active_set(0)
+    check(mgr.get_slot_state(0) == SLOT_PLAYING, "set 0's loop was finalized + playing")
+    mgr.clear_all()
+
+
+def test_clear_all_empties_every_set():
+    print("clear_all removes loops from every set")
+    mgr = fresh_manager()
+    for set_idx in (0, 3):
+        mgr.set_active_set(set_idx)
+        mgr.start_recording(1, cc_set_idx=set_idx)
+        clock.advance(10)
+        mgr.get_recording_loop().add_cc(9, 9, 0)
+        clock.advance(50)
+        mgr.stop_recording()
+    mgr.clear_all()
+    check(list(mgr.iter_all_loops()) == [], "no loops remain after clear_all")
+    check(not mgr.is_recording, "clear_all resets recording state")
+    mgr.set_active_set(3)
+    check(mgr.get_slot_state(1) == SLOT_EMPTY, "set 3 slot is empty after clear_all")
+
+
+def test_delete_only_active_set():
+    print("delete_loop only touches the active set")
+    mgr = fresh_manager()
+    mgr.set_active_set(0)
+    mgr.start_recording(0, cc_set_idx=0)
+    clock.advance(10)
+    mgr.get_recording_loop().add_cc(1, 1, 0)
+    clock.advance(50)
+    mgr.stop_recording()
+    mgr.set_active_set(1)
+    mgr.start_recording(0, cc_set_idx=1)
+    clock.advance(10)
+    mgr.get_recording_loop().add_cc(2, 2, 0)
+    clock.advance(50)
+    mgr.stop_recording()
+
+    # Delete set 1's pad; set 0's must survive
+    mgr.delete_loop(0)
+    check(mgr.get_slot_state(0) == SLOT_EMPTY, "active set (1) pad deleted")
+    mgr.set_active_set(0)
+    check(mgr.get_slot_state(0) == SLOT_PLAYING, "other set's pad untouched by delete")
+    mgr.clear_all()
+
+
+def test_total_events_cap():
+    print("event cap counts cc + at together (plan 4g)")
+    mgr = fresh_manager()
+    mgr.start_recording(0)
+    loop = mgr.loops[0]
+    # Alternate CC and AT so both storages grow; total must cap at MAX_LOOP_EVENTS
+    for i in range(cfg.MAX_LOOP_EVENTS + 50):
+        clock.advance(2)
+        if i % 2 == 0:
+            loop.add_cc(30, i % 128, 0)
+        else:
+            loop.add_aftertouch(i % 128, 1)
+    total = len(loop.cc_events) + len(loop.aftertouch_events)
+    check(total == cfg.MAX_LOOP_EVENTS, "cc+at total capped at MAX_LOOP_EVENTS, not 2x")
+    check(loop.max_events_reached, "cap flag set on total")
+    mgr.delete_loop(0)
+
+
+def test_low_memory_reject():
+    print("start_recording refuses below START_RECORD_FLOOR (memory guard)")
+    saved = loopmanager._mem_free
+    try:
+        # Pretend free RAM is just under the floor: start must be refused.
+        loopmanager._mem_free = lambda: cfg.START_RECORD_FLOOR - 1
+        mgr = fresh_manager()
+        check(mgr.start_recording(0) is False, "refused when free < START_RECORD_FLOOR")
+        check(mgr.get_slot_state(0) == SLOT_EMPTY, "no loop created on refusal")
+        check(not mgr.is_recording, "recording state untouched on refusal")
+        # Plenty of RAM: start is allowed again.
+        loopmanager._mem_free = lambda: cfg.START_RECORD_FLOOR + 100000
+        check(mgr.start_recording(0) is True, "allowed when free >= START_RECORD_FLOOR")
+        mgr.clear_all()
+    finally:
+        loopmanager._mem_free = saved
+
+
 if __name__ == "__main__":
     test_record_play_stop()
     test_empty_recording_removed()
@@ -407,4 +560,12 @@ if __name__ == "__main__":
     test_wiggle_completes_at_exact_window_boundary()
     test_wiggle_disarm_clears_state()
     test_ticks_wraparound()
+    # Per-set ("4 pads per bank") refactor
+    test_per_set_isolation()
+    test_iter_all_loops_spans_sets()
+    test_recording_global_single_across_sets()
+    test_clear_all_empties_every_set()
+    test_delete_only_active_set()
+    test_total_events_cap()
+    test_low_memory_reject()
     print(f"\nAll {PASS} checks passed.")

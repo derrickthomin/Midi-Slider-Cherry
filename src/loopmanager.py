@@ -1,16 +1,27 @@
 """
 LumaFader - Loop Manager (Record Mode)
 =======================================
-Ported from the DJBB Midi Loopster 2 loopmanager.py and resized to the
-LumaFader's 4 buttons = 4 loop slots. No display, no MIDI sync, no
-persistence; all LED feedback is owned by the controller / LightsManager
-via get_slot_state().
+Ported from the DJBB Midi Loopster 2 loopmanager.py. The LumaFader has 4
+buttons = 4 loop slots ("pads") PER CC set: each CC set (the global bank plus
+every page's banks - see constants.NUM_RECORD_CC_SETS) owns its own four pads,
+so navigating banks in Record Mode gives the user fresh pads for that bank's
+sliders. Only one recording runs at a time across all sets.
+
+The controller selects the *active set* (via set_active_set); slot operations
+(start/stop/delete/play, slot state) resolve against it. Playback and
+exit-cleanup span *all* sets via iter_all_loops, so loops recorded in other
+banks keep playing while a different bank is on screen (layered multi-bank
+looper). No display, no MIDI sync, no persistence; all LED feedback is owned by
+the controller / LightsManager.
+
+Backward compatibility: `loops` is a property returning the active set's four
+pads, so callers that index `loops[slot]` always address the active bank.
 """
 
 import gc
 
 import constants as cfg
-from looper import MidiLoop, ticks_ms, ticks_diff
+from looper import MidiLoop, ticks_ms, ticks_diff, _mem_free
 from settings import settings
 
 # Slot states (consumed by the controller and LightsManager)
@@ -23,12 +34,48 @@ NUM_SLOTS = 4
 
 
 class LoopManager:
-    """Manages the 4 loop slots: recording orchestration and play/stop state."""
+    """Manages 4 loop slots per CC set: recording orchestration and play/stop
+    state. One recording at a time globally; the active set is chosen by the
+    controller and addressed by the slot operations below."""
 
     def __init__(self):
-        self.loops = [None] * NUM_SLOTS
+        # {set_idx: [MidiLoop|None] * NUM_SLOTS}; sets are created lazily the
+        # first time a pad in them is recorded, so unused sets cost nothing.
+        self.loops_by_set = {}
+        self.active_set = 0
+        # Recording is global-single: which (set, slot) is currently recording.
+        self.recording_set = -1
         self.recording_slot = -1
         self.is_recording = False
+
+    # ==================== Set storage ====================
+
+    def _slots_for(self, set_idx):
+        """Return set_idx's pad list, creating it (all empty) on first use."""
+        slots = self.loops_by_set.get(set_idx)
+        if slots is None:
+            slots = [None] * NUM_SLOTS
+            self.loops_by_set[set_idx] = slots
+        return slots
+
+    @property
+    def loops(self):
+        """The active set's NUM_SLOTS pads. Backward-compatible view: callers
+        that index loops[slot] always see the active bank."""
+        return self._slots_for(self.active_set)
+
+    def set_active_set(self, set_idx):
+        """Select which set's 4 pads the slot operations address. Called by the
+        controller on Record-Mode entry and every CC-set navigation step."""
+        self.active_set = set_idx
+
+    def iter_all_loops(self):
+        """Yield every non-None loop across every set - for the playback pump
+        and exit cleanup, which must span all banks, not just the active one."""
+        for slots in self.loops_by_set.values():
+            for loop in slots:
+                if loop is not None:
+                    yield loop
 
     # ==================== Queries ====================
 
@@ -36,9 +83,9 @@ class LoopManager:
         return self.loops[slot_idx] is not None
 
     def get_recording_loop(self):
-        if self.recording_slot == -1:
+        if self.recording_set == -1:
             return None
-        return self.loops[self.recording_slot]
+        return self.loops_by_set[self.recording_set][self.recording_slot]
 
     def get_slot_state(self, slot_idx):
         loop = self.loops[slot_idx]
@@ -53,18 +100,35 @@ class LoopManager:
     # ==================== Recording ====================
 
     def start_recording(self, slot_idx, cc_set_idx=0):
-        """Start recording on an empty slot. If a recording is already running
-        on another slot, finalize it first (keep it if it has events, silently
-        remove it if empty). Returns True if recording started."""
-        if self.loops[slot_idx] is not None:
+        """Start recording on an empty slot in the active set. If a recording is
+        already running on another slot/set, finalize it first (keep it if it
+        has events, silently remove it if empty). cc_set_idx is stamped on the
+        loop for its slot LED color.
+
+        Returns True if recording started, or False if it was refused - the slot
+        is occupied, OR free RAM is below START_RECORD_FLOOR (so the new loop
+        couldn't safely grow to a full GUARANTEED_LOOP_EVENTS without risking a
+        fragmentation crash). The controller turns a low-memory False into the
+        triple-blink reject."""
+        slots = self.loops_by_set.get(self.active_set)
+        if slots is not None and slots[slot_idx] is not None:
             return False
 
         if self.is_recording:
             self.stop_recording()
 
+        # Low-memory guard: refuse rather than start a recording we might not be
+        # able to grow (Record_mode_expansion_plan §1/§3). Pure threshold check
+        # against live free RAM - reserves nothing. _mem_free() returns a huge
+        # value off-device (CPython), so unit tests are unaffected.
         gc.collect()
+        if _mem_free() < cfg.START_RECORD_FLOOR:
+            return False
+
+        slots = self._slots_for(self.active_set)
         loop = MidiLoop(loop_type=settings.get_loop_type(), cc_set_idx=cc_set_idx)
-        self.loops[slot_idx] = loop
+        slots[slot_idx] = loop
+        self.recording_set = self.active_set
         self.recording_slot = slot_idx
         self.is_recording = True
         loop.toggle_record_state(True)
@@ -77,15 +141,17 @@ class LoopManager:
         if not self.is_recording or self.recording_slot == -1:
             return -1
 
+        set_idx = self.recording_set
         slot_idx = self.recording_slot
-        loop = self.loops[slot_idx]
+        loop = self._slots_for(set_idx)[slot_idx]
+        self.recording_set = -1
         self.recording_slot = -1
         self.is_recording = False
 
         loop.toggle_record_state(False)
 
         if not loop.has_events():
-            self.delete_loop(slot_idx)
+            self._remove(set_idx, slot_idx)
             return slot_idx
 
         if loop.loop_type == "hold":
@@ -102,7 +168,7 @@ class LoopManager:
         if not self.is_recording or self.recording_slot == -1:
             return -1
 
-        loop = self.loops[self.recording_slot]
+        loop = self.loops_by_set[self.recording_set][self.recording_slot]
         hit_time_cap = (loop.start_timestamp != 0 and
                         ticks_diff(ticks_ms(), loop.start_timestamp) >= cfg.MAX_LOOP_MS)
         if loop.max_events_reached or hit_time_cap:
@@ -117,13 +183,32 @@ class LoopManager:
             return
         loop.toggle_playstate(on_or_off)
 
-    def delete_loop(self, slot_idx):
-        loop = self.loops[slot_idx]
-        if loop is None:
+    def _remove(self, set_idx, slot_idx):
+        """Clear and drop a single pad, clearing recording state if it was the
+        one recording."""
+        slots = self.loops_by_set.get(set_idx)
+        if slots is None or slots[slot_idx] is None:
             return
-        if self.recording_slot == slot_idx:
+        if self.recording_set == set_idx and self.recording_slot == slot_idx:
+            self.recording_set = -1
             self.recording_slot = -1
             self.is_recording = False
-        loop.clear()
-        self.loops[slot_idx] = None
+        slots[slot_idx].clear()
+        slots[slot_idx] = None
+        gc.collect()
+
+    def delete_loop(self, slot_idx):
+        """Delete a loop in the active set."""
+        self._remove(self.active_set, slot_idx)
+
+    def clear_all(self):
+        """Clear every loop in every set (Record-Mode exit)."""
+        for slots in self.loops_by_set.values():
+            for slot_idx in range(NUM_SLOTS):
+                if slots[slot_idx] is not None:
+                    slots[slot_idx].clear()
+                    slots[slot_idx] = None
+        self.recording_set = -1
+        self.recording_slot = -1
+        self.is_recording = False
         gc.collect()

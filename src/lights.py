@@ -240,25 +240,28 @@ class LightsManager:
             else:
                 self.pixels[pix_idx] = (0, 0, 0)
 
-    def update_record_mode_buttons(self, slot_states, set_flash=-1):
+    def update_record_mode_buttons(self, slot_states, set_flash=-1, reject=(-1, False)):
         """
         Draws the Record Mode loop-slot states on the button pixels (replaces
         update_buttons/indicate_locked_bank while Record Mode is active).
 
         Args:
-            slot_states (list): 4 (state, color) tuples from
-                controller.get_record_slot_states(). States: "empty",
-                "recording", "playing", "stopped", "delete_armed"; color is the
-                bank color for "stopped" slots.
+            slot_states (list): 4 state strings from
+                controller.get_record_slot_states(): "empty", "recording",
+                "playing", "stopped", "delete_armed". The color per state is
+                fixed here (stopped = white, RECORD_STOPPED_COLOR).
             set_flash (int): landed CC set index to flash (-1 = no flash). Sets
                 1+ flash that set's bank pixel ((set-1)%4) in the page's color
                 (RECORD_PAGE_FLASH_COLORS[(set-1)//4]); set 0 (global) briefly
                 blanks all four button pixels. The button position encodes the
                 bank and the color the page, so navigating up lands on bank 1
                 (bottom) and walks up, down lands on bank 4 (top) and walks down.
+            reject ((slot_idx, on)): low-memory record-reject blink from
+                controller.get_reject_blink(); (-1, False) when inactive. Painted
+                last (over slot state + flash) as red on / off on that pad.
         """
         now = time.monotonic()
-        for idx, (state, color) in enumerate(slot_states):
+        for idx, state in enumerate(slot_states):
             pixel_index = self.button_pixel_indices[idx]
             if state == "recording":
                 self.pixels[pixel_index] = cfg.RECORD_RECORDING_COLOR
@@ -268,7 +271,7 @@ class LightsManager:
             elif state == "playing":
                 self.pixels[pixel_index] = cfg.RECORD_PLAYING_COLOR
             elif state == "stopped":
-                self.pixels[pixel_index] = color if color is not None else (0, 0, 0)
+                self.pixels[pixel_index] = cfg.RECORD_STOPPED_COLOR
             else:  # empty
                 self.pixels[pixel_index] = (0, 0, 0)
 
@@ -281,6 +284,13 @@ class LightsManager:
             bank = (set_flash - 1) % 4
             page = (set_flash - 1) // 4
             self.pixels[self.button_pixel_indices[bank]] = cfg.RECORD_PAGE_FLASH_COLORS[page]
+
+        # Low-memory record-reject blink (overlays everything): red on / off on
+        # the refused pad for ~3 cycles.
+        reject_slot, reject_on = reject
+        if reject_slot != -1:
+            self.pixels[self.button_pixel_indices[reject_slot]] = (
+                cfg.RECORD_RECORDING_COLOR if reject_on else (0, 0, 0))
 
     def update_mapping_mode(self, target_slider_idx, confirm_slider_idx, confirm_active,
                             confirm_failed, bank_button_idx=-1, bank_page_idx=0):

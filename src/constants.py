@@ -42,10 +42,22 @@ MAX_LOOP_EVENTS = 4000          # Per-loop CC/AT event cap. One recording captur
                                 # only one loop ever growing at a time (measured
                                 # via test_record_memory).
 MAX_LOOP_MS = 60000             # Per-loop length cap (forced by 'H' array timestamp width)
-MEMORY_CRITICAL_THRESHOLD = 15000  # gc.mem_free() floor; recording auto-stops below this.
-                                # Headroom for an array-growth reallocation spike
-                                # (array storage reallocs a bigger contiguous block
-                                # before freeing the old one).
+MEMORY_CRITICAL_THRESHOLD = 40000  # gc.mem_free() floor; an in-flight recording
+                                # auto-stops below this. Raised from 15000 after
+                                # on-device measurement (Record_mode_expansion_plan
+                                # §1): with 4 pads per CC set the heap fragments,
+                                # and uniform 1500-event pads crashed growing the
+                                # 14th pad at ~41.6 KB free. This backstop sits
+                                # just above that band.
+GUARANTEED_LOOP_EVENTS = 1500   # The "full loop" size START_RECORD_FLOOR guarantees
+                                # room for, even if the user makes this last one big.
+START_RECORD_FLOOR = 50000      # gc.mem_free() must be >= this to START a new
+                                # recording (else it's refused; the pad triple-
+                                # blinks). Static threshold compared to live free;
+                                # reserves nothing. 50 KB refuses the doomed pad-14
+                                # (49.2 KB free) before it can crash mid-growth.
+RECORD_REJECT_BLINK_S = 0.15    # Phase length of the 3x red reject blink shown when
+                                # a recording is refused for low memory.
 # NUM_RECORD_CC_SETS is derived from PAGES below (global bank + every page's banks).
 
 # Mapping Mode (on-device MIDI learn)
@@ -79,6 +91,10 @@ PAGE_INDICATOR_COLOR = (255, 255, 255)  # White for page indicator
 # Record Mode colors / timing
 RECORD_RECORDING_COLOR = (255, 0, 0)   # Solid red while recording (also hold-fill color)
 RECORD_PLAYING_COLOR = (0, 255, 0)     # Green while a loop plays
+RECORD_STOPPED_COLOR = (255, 255, 255)  # White while a recorded loop is stopped. White
+                                        # (not the bank color) so recording (red) /
+                                        # playing (green) / stopped read clearly even
+                                        # when the bank's own color is red or green.
 RECORD_DELETE_BLINK_S = 0.15           # Delete-armed red blink phase length
 RECORD_SET_FLASH_S = 0.25              # CC-set navigation flash duration
 # Every CC-set step flashes the landed set's bank button in that page's color:
