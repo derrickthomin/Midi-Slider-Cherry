@@ -118,9 +118,9 @@ class LoopManager:
             self.stop_recording()
 
         # Low-memory guard: refuse rather than start a recording we might not be
-        # able to grow (Record_mode_expansion_plan §1/§3). Pure threshold check
-        # against live free RAM - reserves nothing. _mem_free() returns a huge
-        # value off-device (CPython), so unit tests are unaffected.
+        # able to grow. Pure threshold check against live free RAM - reserves
+        # nothing. _mem_free() returns a huge value off-device (CPython), so
+        # unit tests are unaffected.
         gc.collect()
         if _mem_free() < cfg.START_RECORD_FLOOR:
             return False

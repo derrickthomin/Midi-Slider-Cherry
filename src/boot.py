@@ -7,6 +7,7 @@ import supervisor
 supervisor.set_usb_identification(manufacturer="DerrickThomin", product="LumaFader")
 microcontroller.cpu.frequency = 270_000_000  # RP2040 Safe to 2X overclock
 
+# Remount writable first so we can set the volume label below.
 storage.remount("/", readonly=False)
 
 m = storage.getmount("/")
@@ -32,9 +33,9 @@ btn3.pull = digitalio.Pull.UP
 # All buttons pressed = all values are False (LOW due to pull-up)
 all_pressed = not btn0.value and not btn1.value and not btn2.value and not btn3.value
 
-# readonly=True when buttons pressed (all_pressed=True becomes readonly=True? No, we want opposite)
-# When all_pressed is True, we want USB drive ON and readonly=True
-# When all_pressed is False, we want USB drive OFF and readonly=False
+# Hold all 4 buttons at boot to expose the USB drive for editing files:
+#   all_pressed=True  -> mount read-only to the device + enable USB drive (host can edit)
+#   all_pressed=False -> mount writable for the device + disable USB drive (normal operation)
 storage.remount("/", readonly=all_pressed)
 
 if all_pressed:

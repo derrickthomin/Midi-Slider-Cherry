@@ -213,18 +213,6 @@ class MidiManager:
                 self.midi.send(at_msg, channel=channel)
                 self.trs_midi.send(at_msg, channel=channel)
     
-    def get_last_aftertouch_value_sent(self, channel):
-        """
-        Retrieves the last aftertouch value sent for a specified channel.
-
-        Args:
-            channel (int): MIDI channel (0-indexed, 0-15)
-
-        Returns:
-            int: The last aftertouch value sent for that channel, or 16 if never sent.
-        """
-        return self.last_aftertouch_values_sent.get(channel, 16)
-    
     def get_last_at_value_per_slider(self, slider_idx, page_idx, bank_idx):
         """
         Retrieves the last aftertouch value sent for a specific slider/page/bank combo.

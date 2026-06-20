@@ -111,7 +111,7 @@ class LightsManager:
                     channel = settings.get_resolved_slider_channels(page_idx, bank_idx, slider_idx)[0]
                 last_sent_cc_value = midi_manager.get_last_cc_value_sent(slider.current_assigned_cc_number, channel)
             
-            if abs(slider_cc_value - last_sent_cc_value) > 4:
+            if abs(slider_cc_value - last_sent_cc_value) > cfg.SLIDER_LIGHT_PICKUP_THRESHOLD:
                 cc_value = last_sent_cc_value
             else:
                 cc_value = slider_cc_value
@@ -295,7 +295,7 @@ class LightsManager:
     def update_mapping_mode(self, target_slider_idx, confirm_slider_idx, confirm_active,
                             confirm_failed, bank_button_idx=-1, bank_page_idx=0):
         """
-        Draws Mapping Mode (on-device MIDI learn, §2j): replaces
+        Draws Mapping Mode (on-device MIDI learn): replaces
         update_slider_lights / update_buttons / indicate_locked_bank /
         indicate_jump_mode while Mapping Mode is active.
 
@@ -388,8 +388,7 @@ class LightsManager:
 
     def startup_animation(self):
         """
-        Plays a brief but eye-catching rainbow animation on startup.
-        Limits the animation to approximately 1 second.
+        Plays a brief but eye-catching rainbow animation on startup (~2 seconds).
         """
         readonly = storage.getmount("/").readonly
         if readonly:
@@ -402,7 +401,6 @@ class LightsManager:
                 self.pixels.show()
                 time.sleep(0.2)
 
-        # Simply call the rainbow animation with a 1-second duration limit
         self.rainbow_animation(speed=0.002, cycles=2, duration=2.0)
 
     def rainbow_animation(self, speed=0.01, cycles=3, duration=None):
@@ -451,7 +449,3 @@ class LightsManager:
         # Clean up after animation ends
         self.clear()
         self.show_pixels()
-
-if __name__ == "__main__":
-    lights = LightsManager()
-    lights.rainbow_animation(speed=0.001, cycles=2)

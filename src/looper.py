@@ -213,7 +213,7 @@ class MidiLoop:
             return None
 
         # Cap on TOTAL events (cc + at), not per-storage, so a pad mixing CC and
-        # aftertouch can't silently hold up to 2x MAX_LOOP_EVENTS (plan 4g).
+        # aftertouch can't silently hold up to 2x MAX_LOOP_EVENTS.
         if self.count_events() >= cfg.MAX_LOOP_EVENTS:
             self.max_events_reached = True
             return None
@@ -336,7 +336,7 @@ class MidiLoop:
             # boundary before resetting/parking.  Without this a gc.collect()
             # pause at the wrong moment can cause a hold loop to park without
             # ever sending its final values, leaving the synth at the wrong
-            # position (skeleton A.1 in Record Mode Review Notes).
+            # position.
             drain_ms = self.total_loop_ms
             if not (self.loop_type == "hold" and self.cc_sweep_complete):
                 self.queue_index_cc = self._process_event_queue(

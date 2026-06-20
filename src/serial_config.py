@@ -18,6 +18,8 @@ CMD:SET_SETTINGS|json  - Updates settings from JSON, saves to file
 CMD:GET_STATUS         - Returns RSP:<current device state for interactive UI>
 CMD:SET_CONFIG_MODE|N  - Enable (1) or disable (0) config mode
 CMD:SET_LOCKED_BANK|N  - Lock bank N (0-3), or -1 to unlock
+CMD:START_LEARN|N      - Start MIDI learn for slider N (0-3)
+CMD:STOP_LEARN         - Stop/cancel MIDI learn
 """
 
 import json
@@ -130,7 +132,7 @@ class SerialConfigHandler:
                             cmd = line[4:]  # Remove CMD: prefix
                             self._process_command(cmd)
                             return True
-            except Exception as e:
+            except Exception:
                 self._buffer = ""
         return False
     

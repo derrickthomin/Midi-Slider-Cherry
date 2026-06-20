@@ -28,12 +28,11 @@ class MidiController:
         self.button_pins = button_pins
 
         # Tracking
-        self.is_muted = False
         self.current_page_idx = 0
         self.current_bank_idx = 0  # determined by if any buttons are held. -1 is global.
         self.held_button_order = []  # Tracks button press order; first is primary, rest are additional
         self.primary_bank_idx = -1  # Derived from held_button_order[0], -1 = global
-        self.additional_bank_indicies = []  # Derived from held_button_order[1:]
+        self.additional_bank_indices = []  # Derived from held_button_order[1:]
         self.has_anything_changed = False
         self.locked_bank_idx = -1
         self.jump_mode_enabled = False
@@ -58,7 +57,7 @@ class MidiController:
         # ==================== Record Mode state ====================
         self.record_mode_active = False
         self.record_mode_just_toggled = False  # code.py plays the enter/exit animation, then clears
-        self.record_cc_set_idx = 0  # 0 = global bank, 1-4 = page 1 banks (separate from page/bank state, gotcha 9.3)
+        self.record_cc_set_idx = 0  # 0 = global bank, 1-4 = page 1 banks (separate from page/bank state)
         self.loop_manager = LoopManager()
 
         # Hold-all-four-buttons mode-toggle detection
@@ -69,7 +68,7 @@ class MidiController:
         # action (mode-toggle participants, set-navigation held button, etc.)
         self._suppress_release = [False] * 4
 
-        # Per-slot click state machine (release-based; gotcha 9.1 - don't use
+        # Per-slot click state machine (release-based; don't use
         # BankButton.was_double_pressed for click counting)
         self._slot_last_press_time = [0.0] * 4
         self._slot_pending_record = [False] * 4    # start recording on this button's next release
@@ -85,7 +84,7 @@ class MidiController:
         self._rec_nav_active = False
         self._rec_nav_exit_button_idx = -1
 
-        # CC-set navigation flash (3d): _set_flash_set_idx is the landed set,
+        # CC-set navigation flash: _set_flash_set_idx is the landed set,
         # flashed on its bank button in the page's color (global blanks all four)
         # for RECORD_SET_FLASH_S.
         self._set_flash_time = 0.0
@@ -125,7 +124,7 @@ class MidiController:
         self._wiggle_detectors = [SliderWiggleDetector() for _ in range(4)]
         self._global_wiggle_armed = False
 
-        # Bank-entry mapping context, captured at press-time (gotcha 8.1)
+        # Bank-entry mapping context, captured at press-time
         self._bank_entry_armed = False
         self._bank_entry_page_idx = -1
         self._bank_entry_bank_idx = -1
@@ -170,13 +169,13 @@ class MidiController:
         """
         # Record-mode machinery is time-based (hold timer, delete window,
         # playback pump) and must run every iteration, even with no input
-        # changes (gotcha 9.1).
+        # changes.
         self.update_record_mode_state()
 
         # Mapping Mode machinery is likewise time-based (learn poll, blink
         # timing, confirm-flash expiry, wiggle windows) and entry-context
         # capture must see button presses before handle_lock_changes() can
-        # act on them (gotcha 8.1/8.8).
+        # act on them.
         self.update_mapping_mode_state()
 
         if not self.has_anything_changed:
@@ -266,7 +265,7 @@ class MidiController:
 
         self.update_active_bank()
 
-        # Mute sends during the standard-mode all-four-button countdown (2i):
+        # Mute sends during the standard-mode all-four-button countdown:
         # a global-entry wiggle attempt would otherwise spray full-range CC
         # values across the held multi-bank stack.
         if self._mode_hold_start != 0 and not self.record_mode_active:
@@ -395,7 +394,7 @@ class MidiController:
 
                     # Process each additional bank according to its own type
                     for i, add_cc in enumerate(slider.additional_assigned_cc_numbers):
-                        bank_idx = self.additional_bank_indicies[i]
+                        bank_idx = self.additional_bank_indices[i]
                         add_channels = self.channel_lookup[self.current_page_idx][bank_idx][slider_idx]
                         add_type = self.type_lookup[self.current_page_idx][bank_idx]
 
@@ -478,7 +477,7 @@ class MidiController:
         slider.crossing_cc_value = cc_value
         return False
 
-    def update_held_button_indicies(self):
+    def update_held_button_indices(self):
         """
         Updates 'held_button_order' to track button press order.
         
@@ -499,12 +498,12 @@ class MidiController:
         # Derive primary and additional from the order list
         if self.held_button_order:
             self.primary_bank_idx = self.held_button_order[0]
-            self.additional_bank_indicies = self.held_button_order[1:]
+            self.additional_bank_indices = self.held_button_order[1:]
         else:
             self.primary_bank_idx = -1
-            self.additional_bank_indicies = []
+            self.additional_bank_indices = []
         
-        return self.additional_bank_indicies
+        return self.additional_bank_indices
 
     def update_active_bank(self):
         """
@@ -512,9 +511,9 @@ class MidiController:
         Then updates slider CC assignments if necessary.
         """
         previous_bank_idx = self.current_bank_idx
-        previous_additional_indicies = list(self.additional_bank_indicies)
+        previous_additional_indices = list(self.additional_bank_indices)
 
-        self.update_held_button_indicies()
+        self.update_held_button_indices()
 
         if self.locked_bank_idx != -1:
             self.current_bank_idx = self.locked_bank_idx
@@ -523,7 +522,7 @@ class MidiController:
 
         # Reassign CC numbers if we switched banks or changed held-button indices
         if (previous_bank_idx != self.current_bank_idx 
-            or previous_additional_indicies != self.additional_bank_indicies):
+            or previous_additional_indices != self.additional_bank_indices):
             self.update_slider_cc_assignments()
 
     def update_slider_cc_assignments(self):
@@ -552,7 +551,7 @@ class MidiController:
                 current_type = self.type_lookup[self.current_page_idx][self.current_bank_idx]
 
                 # Step 2: Add any secondary CC assignments from additional held buttons
-                if self.additional_bank_indicies:
+                if self.additional_bank_indices:
                     slider.additional_assigned_cc_numbers = self.get_additional_cc_numbers(idx)
                 else:
                     slider.additional_assigned_cc_numbers = []
@@ -630,7 +629,7 @@ class MidiController:
         Returns extra CC numbers from other held buttons' banks for the slider at 'idx'.
         """
         additional_cc_numbers = []
-        for button_idx in self.additional_bank_indicies:
+        for button_idx in self.additional_bank_indices:
             bank = self.pages[self.current_page_idx][button_idx]
             additional_cc_numbers.append(bank[idx])
         return additional_cc_numbers
@@ -736,7 +735,7 @@ class MidiController:
         """
         now = time.monotonic()
 
-        # Web config mode and Record Mode are mutually exclusive (gotcha 9.11)
+        # Web config mode and Record Mode are mutually exclusive
         if self.config_mode and self.record_mode_active:
             self._toggle_record_mode()
 
@@ -747,7 +746,7 @@ class MidiController:
             # Hitting an event/memory/time cap auto-stops the recording
             # exactly like a manual stop.  Apply the same post-stop ignore
             # window as a manual stop so a click racing the cap can't pair
-            # into a double-press and arm delete on the brand-new loop (3b).
+            # into a double-press and arm delete on the brand-new loop.
             auto_stopped = self.loop_manager.check_recording_limits()
             if auto_stopped >= 0:
                 self._slot_ignore_press_until[auto_stopped] = now + cfg.DOUBLE_PRESS_TIME
@@ -810,7 +809,7 @@ class MidiController:
         if self._mode_hold_start == 0:
             self._mode_hold_start = now
             # All four buttons participate in the hold: their releases must
-            # not leak into either mode's gestures (suppression rule c, 3b) -
+            # not leak into either mode's gestures (suppression rule c) -
             # this also covers the jump-mode combo an aborted hold would match.
             for idx in range(4):
                 self._suppress_release[idx] = True
@@ -822,7 +821,7 @@ class MidiController:
             self._toggle_record_mode()
 
     def _arm_global_wiggle_if_eligible(self, now):
-        """Arm the global-bank Mapping Mode entry context (2c): only in
+        """Arm the global-bank Mapping Mode entry context: only in
         standard mode, with no bank locked, not config_mode, and no other
         entry context already armed."""
         if (self.record_mode_active or self.config_mode or self.mapping_mode_active
@@ -856,11 +855,11 @@ class MidiController:
         self.record_mode_just_toggled = True
 
         # Hard-reset normal-mode gesture state so the trailing releases land
-        # clean in the other mode (gotcha 9.2)
+        # clean in the other mode
         self.unlock_bank()
         self.held_button_order = []
         self.primary_bank_idx = -1
-        self.additional_bank_indicies = []
+        self.additional_bank_indices = []
         self.unlock_pending = False
         self.page_change_mode_active = False
         self.page_change_exit_button_idx = -1
@@ -881,7 +880,7 @@ class MidiController:
         self.update_record_slider_assignments()
 
     def _exit_record_mode(self):
-        """Exit Record Mode (3a): finalize any recording, cancel an armed
+        """Exit Record Mode: finalize any recording, cancel an armed
         delete (loop kept, left stopped), stop all loops (they stay in RAM)."""
         self.record_mode_active = False
 
@@ -894,7 +893,7 @@ class MidiController:
         for loop in self.loop_manager.iter_all_loops():
             self._stop_loop_obj_with_reset(loop)
 
-        # Normal-mode page/bank state was never touched (gotcha 9.3); just
+        # Normal-mode page/bank state was never touched; just
         # restore the sliders' normal CC assignments and pickup tracking.
         self.update_slider_cc_assignments()
 
@@ -910,7 +909,7 @@ class MidiController:
     def process_record_mode_inputs(self, swallowed):
         """
         Record-mode replacement for the normal gesture handling. All
-        normal-mode gestures are inert here except set navigation (3c).
+        normal-mode gestures are inert here except set navigation.
         """
         # Exit set-navigation mode when its initiating button is released
         # (mirrors page change mode)
@@ -1001,12 +1000,12 @@ class MidiController:
             return
         self._cancel_delete_arm(restore=True)
         # Finalize any in-flight recording as a single-click-stop before leaving
-        # the bank (4d): otherwise send_record_mode_cc would keep taping the
+        # the bank: otherwise send_record_mode_cc would keep taping the
         # recording loop with the NEW bank's CC assignments, corrupting it.
         if self.loop_manager.is_recording:
             self.loop_manager.stop_recording()
         # Stop "hold" loops in the bank we're leaving - their pads are no longer
-        # addressable from another bank (plan 2c). "loop" loops keep playing.
+        # addressable from another bank. "loop" loops keep playing.
         self._stop_hold_loops_in_active_set()
 
         self.record_cc_set_idx = new_idx
@@ -1079,7 +1078,7 @@ class MidiController:
     def _handle_slot_press(self, slot_idx, now):
         # Presses within the double-press window after a stop-recording click
         # are ignored - otherwise a bouncy stop click would arm delete on the
-        # brand-new loop (3b)
+        # brand-new loop
         if now < self._slot_ignore_press_until[slot_idx]:
             self._suppress_release[slot_idx] = True
             self._slot_last_press_time[slot_idx] = 0.0
@@ -1118,7 +1117,7 @@ class MidiController:
             self._suppress_release[slot_idx] = True  # second release fires nothing
 
     def _handle_slot_release(self, slot_idx, button, was_swallowed, now):
-        # Suppression rules (3b): (c) mode-toggle/navigation participants...
+        # Suppression rules: (c) mode-toggle/navigation participants...
         if was_swallowed:
             self._slot_pending_record[slot_idx] = False
             self._slot_last_press_time[slot_idx] = 0.0
@@ -1139,7 +1138,7 @@ class MidiController:
                 self._trigger_reject_blink(slot_idx, now)
                 self._slot_last_press_time[slot_idx] = 0.0
                 return
-            # Re-arm pickup on every record start (comment 1): a slider that
+            # Re-arm pickup on every record start: a slider that
             # already "crossed" in a prior interaction would otherwise send (and
             # record) from its current position immediately - i.e. behave like
             # jump mode. After re-arming, a drifted slider must move past its
@@ -1149,7 +1148,7 @@ class MidiController:
             # Jump Mode still short-circuits should_send_cc, so it's unaffected.
             self.update_record_slider_assignments()
             # Ignore presses within the double-press window after starting a
-            # recording (symmetric with stop-recording, 3b) - prevents a bouncy
+            # recording (symmetric with stop-recording) - prevents a bouncy
             # third tap from immediately single-click stopping the new recording.
             self._slot_ignore_press_until[slot_idx] = now + cfg.DOUBLE_PRESS_TIME
             self._slot_last_press_time[slot_idx] = 0.0
@@ -1211,7 +1210,7 @@ class MidiController:
     def send_record_mode_cc(self):
         """
         Record-mode fader output: same live send path as normal mode but with
-        the active CC set's lookups, plus the recording tap (9.5) - events go
+        the active CC set's lookups, plus the recording tap - events go
         both to MIDI out and into the recording loop, after the pickup check.
         """
         recording_loop = self.loop_manager.get_recording_loop()
@@ -1246,7 +1245,7 @@ class MidiController:
         them - loops recorded in other banks keep playing while a different bank
         is on screen (layered multi-bank looper). Safe to call unconditionally -
         stopped/recording loops return None. Playback goes through midi_manager
-        so its de-dupe and pickup state stay consistent with reality (gotcha 9.6).
+        so its de-dupe and pickup state stay consistent with reality.
         """
         for loop in self.loop_manager.iter_all_loops():
             events = loop.get_new_events()
@@ -1261,7 +1260,7 @@ class MidiController:
     def _stop_loop_with_reset(self, slot_idx):
         """Stop a slot's loop in the active set; if cc_reset is enabled, snap back
         to the loop's first recorded values for exactly the (CC, channel) pairs it
-        recorded (3e)."""
+        recorded."""
         self._stop_loop_obj_with_reset(self.loop_manager.loops[slot_idx])
 
     def _stop_loop_obj_with_reset(self, loop):
@@ -1276,7 +1275,7 @@ class MidiController:
 
     def _stop_hold_loops_in_active_set(self):
         """Stop playing "hold" loops in the active set (called when navigating
-        away from a bank, plan 2c). "loop" loops are left running."""
+        away from a bank). "loop" loops are left running."""
         for loop in self.loop_manager.loops:
             if loop is not None and loop.loop_type == "hold" and loop.loop_is_playing:
                 self._stop_loop_obj_with_reset(loop)
@@ -1291,7 +1290,7 @@ class MidiController:
 
     def get_record_slot_states(self):
         """
-        Per-slot display state (active set) for the LightsManager (3d): one of
+        Per-slot display state (active set) for the LightsManager: one of
         "empty", "recording", "playing", "stopped", "delete_armed" per slot.
         The lights pick the color (stopped renders white, RECORD_STOPPED_COLOR,
         so state reads independently of the bank's own color).
@@ -1305,7 +1304,7 @@ class MidiController:
         return states
 
     def get_set_flash(self):
-        """CC-set navigation flash (3d): the landed set index to flash, or -1
+        """CC-set navigation flash: the landed set index to flash, or -1
         when no flash is active. The lights render it on the set's bank button
         in the page color (set 0 / global blanks all four buttons)."""
         if self._set_flash_set_idx == -1:
@@ -1317,7 +1316,7 @@ class MidiController:
 
     def _trigger_reject_blink(self, slot_idx, now):
         """Start (or restart) the low-memory reject blink on `slot_idx`.
-        Idempotent: a repeated refused-start just resets the timer (plan 4i)."""
+        Idempotent: a repeated refused-start just resets the timer."""
         self._reject_blink_slot = slot_idx
         self._reject_blink_start = now
 
@@ -1370,14 +1369,13 @@ class MidiController:
     def update_mapping_mode_state(self):
         """
         Time-based Mapping Mode machinery, run every main-loop iteration
-        regardless of input changes (gotcha 8.8): bank-entry wiggle context
+        regardless of input changes: bank-entry wiggle context
         capture, wiggle polling for whichever entry context is armed, and -
         while active - the cancel/exit/retarget/learn logic.
         """
         now = time.monotonic()
 
-        # Record Mode and web config are mutually exclusive with Mapping Mode
-        # (decision 11, gotcha 8.5's reverse direction).
+        # Record Mode and web config are mutually exclusive with Mapping Mode.
         if self.mapping_mode_active and (self.config_mode or self.record_mode_active):
             self._exit_mapping_mode()
             return
@@ -1392,8 +1390,8 @@ class MidiController:
             self._poll_wiggle_detectors(now)
 
     def _update_bank_entry_wiggle(self, now):
-        """Capture/maintain the bank-entry Mapping Mode context (2d, gotcha
-        8.1): arm when a press lands on the currently-locked bank's button
+        """Capture/maintain the bank-entry Mapping Mode context: arm when a
+        press lands on the currently-locked bank's button
         (before handle_lock_changes can unlock it), disarm on that button's
         release."""
         if self._bank_entry_armed:
@@ -1422,7 +1420,7 @@ class MidiController:
     def _poll_wiggle_detectors(self, now):
         """Feed slider samples to the wiggle detectors for whichever entry
         context (global or bank) is currently armed; act on the first
-        completion (decision 10 - one target at a time)."""
+        completion (one target at a time)."""
         for idx, (slider, detector) in enumerate(zip(self.sliders, self._wiggle_detectors)):
             if detector.update(slider.cc_value, now):
                 self._on_wiggle_complete(idx)
@@ -1430,7 +1428,7 @@ class MidiController:
 
     def _on_wiggle_complete(self, slider_idx):
         """A wiggle completed on `slider_idx` for the currently-armed entry
-        context. AT-type scopes block entry (2h, decision 5) - the wiggle
+        context. AT-type scopes block entry - the wiggle
         does nothing besides disarming that one slider's detector so it
         doesn't keep re-triggering."""
         if self._global_wiggle_armed:
@@ -1456,7 +1454,7 @@ class MidiController:
             self._enter_mapping_mode(slider_idx, ("bank", page_idx, bank_idx))
 
     def _enter_mapping_mode(self, slider_idx, scope):
-        """Enter Mapping Mode (2e.1) with `slider_idx` as the initial target,
+        """Enter Mapping Mode with `slider_idx` as the initial target,
         `scope` = ("global",) or ("bank", page_idx, bank_idx)."""
         self.mapping_mode_active = True
         self.mapping_scope = scope
@@ -1478,10 +1476,10 @@ class MidiController:
             self._wiggle_detectors[idx].arm(slider.cc_value, now)
 
         # Hard-reset normal-mode gesture state so stale presses/releases can't
-        # fire once Mapping Mode exits (gotcha 8.4, mirrors _toggle_record_mode).
+        # fire once Mapping Mode exits (mirrors _toggle_record_mode).
         self.held_button_order = []
         self.primary_bank_idx = -1
-        self.additional_bank_indicies = []
+        self.additional_bank_indices = []
         self.unlock_pending = False
         self.page_change_mode_active = False
         self.page_change_exit_button_idx = -1
@@ -1490,7 +1488,7 @@ class MidiController:
         self.page_just_changed = False
 
     def _update_mapping_mode_active(self, now):
-        """Mapping Mode's per-iteration logic (2e): deferred flash write,
+        """Mapping Mode's per-iteration logic: deferred flash write,
         confirm-flash expiry, cancel button, exit wiggle, retarget, and the
         learn poll."""
         # Deferred flash write: _apply_mapping applied the mapping live and lit
@@ -1509,28 +1507,28 @@ class MidiController:
             self.mapping_confirm_until = 0.0
             self.mapping_save_failed = False
 
-        # Cancel button (2e.5): any new press exits immediately.
+        # Cancel button: any new press exits immediately.
         for idx, button in enumerate(self.buttons):
             if button.detected_new_press:
                 self._suppress_release[idx] = True
                 self._exit_mapping_mode()
                 return
 
-        # Exit wiggle (2e.4)
+        # Exit wiggle
         for idx, (slider, detector) in enumerate(zip(self.sliders, self._wiggle_detectors)):
             if detector.update(slider.cc_value, now):
                 self._exit_mapping_mode()
                 return
 
-        # Retarget (2e.3): the first slider that moved far enough from its
+        # Retarget: the first slider that moved far enough from its
         # baseline becomes the new target.
         for idx, slider in enumerate(self.sliders):
             if abs(slider.cc_value - self._mapping_select_baseline[idx]) >= cfg.MAPPING_SELECT_DELTA:
                 self._retarget_mapping(idx)
                 break
 
-        # Learn poll (2e.2): drain one incoming CC per iteration regardless of
-        # whether a target is selected (gotcha 8.7). A mapping only commits once
+        # Learn poll: drain one incoming CC per iteration regardless of
+        # whether a target is selected. A mapping only commits once
         # MAPPING_LEARN_HITS messages of the same (cc, channel) arrive within
         # MAPPING_LEARN_WINDOW_S of each other, so a single stray CC can't map.
         msg = midi_manager.receive_cc()
@@ -1555,8 +1553,8 @@ class MidiController:
         self._learn_last_msg_time = 0.0
 
     def _retarget_mapping(self, slider_idx):
-        """Retarget the learn target to `slider_idx` (2e.3): re-baseline all
-        sliders and flush stale incoming MIDI (gotcha 8.7)."""
+        """Retarget the learn target to `slider_idx`: re-baseline all
+        sliders and flush stale incoming MIDI."""
         self.mapping_target_slider = slider_idx
         for idx, slider in enumerate(self.sliders):
             self._mapping_select_baseline[idx] = slider.cc_value
@@ -1564,7 +1562,7 @@ class MidiController:
         midi_manager.flush_receive_buffer()
 
     def _apply_mapping(self, slider_idx, cc_number, channel):
-        """Commit a successful learn (2f/2g): apply it LIVE and light the green
+        """Commit a successful learn: apply it LIVE and light the green
         confirm flash immediately, then defer the blocking flash write one
         iteration so the green frame renders before the write stalls the loop
         (the write happens in _update_mapping_mode_active, downgrading to red if
@@ -1576,7 +1574,7 @@ class MidiController:
             _, page_idx, bank_idx = scope
             applied = settings.set_bank_slider_mapping(page_idx, bank_idx, slider_idx, cc_number, channel, persist=False)
 
-        # CC numbers propagate via aliasing (gotcha 8.2); channels are
+        # CC numbers propagate via aliasing; channels are
         # precomputed copies and need an explicit rebuild.
         self.setup_channel_lookup()
         gc.collect()
@@ -1590,9 +1588,9 @@ class MidiController:
         self._mapping_pending_save = applied  # only persist a live-applied map
 
     def _exit_mapping_mode(self):
-        """Exit Mapping Mode (decisions 8/9): clear all mapping state,
+        """Exit Mapping Mode: clear all mapping state,
         re-lock the bank for bank scope, and refresh slider CC assignments /
-        pickup state for a jump-free resume (gotcha 8.9)."""
+        pickup state for a jump-free resume."""
         scope = self.mapping_scope
 
         # If a learn was applied live but its deferred flash write hadn't run
@@ -1625,7 +1623,7 @@ class MidiController:
         else:
             self.held_button_order = []
             self.primary_bank_idx = -1
-            self.additional_bank_indicies = []
+            self.additional_bank_indices = []
             self.update_active_bank()
 
         self.update_slider_cc_assignments()

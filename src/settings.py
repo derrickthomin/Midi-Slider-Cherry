@@ -68,21 +68,18 @@ class Settings:
         use default values and create a new settings file.
         """
         try:
-   
             with open(self.settings_path, 'r') as f:
                 self.settings = json.load(f)
-            
+
             # Validate the loaded settings
             if not self._validate_settings():
                 print("Invalid settings in file. Using defaults.")
                 self._use_defaults()
-                #self._save_settings()
-                
+
         except Exception as e:
             # Using a general Exception instead of specific JSONDecodeError
             print(f"Error loading settings: {str(e)}. Using defaults.")
             self._use_defaults()
-            #self._save_settings()
     
     def _validate_settings(self):
         """
@@ -272,22 +269,6 @@ class Settings:
         """Get the global CC bank settings."""
         return self.settings["GLOBAL_CC_BANK"]
     
-    def get_page_1_banks(self):
-        """Get the page 1 banks settings."""
-        return self.settings["PAGE_1_BANKS"]
-    
-    def get_page_2_banks(self):
-        """Get the page 2 banks settings."""
-        return self.settings["PAGE_2_BANKS"]
-    
-    def get_page_3_banks(self):
-        """Get the page 3 banks settings."""
-        return self.settings["PAGE_3_BANKS"]
-    
-    def get_page_4_banks(self):
-        """Get the page 4 banks settings."""
-        return self.settings["PAGE_4_BANKS"]
-    
     def get_all_pages(self):
         """Get all pages as a list (each page contains 4 banks)."""
         return [
@@ -386,36 +367,6 @@ class Settings:
                 return sorted(set(channels))
         
         return None
-    
-    def _validate_channel_value(self, val):
-        """
-        Validate a channel value ("GLOBAL", int 1-16, or multi-channel "1|2|3").
-        
-        Args:
-            val: The value to validate
-            
-        Returns:
-            bool: True if valid, False otherwise
-        """
-        return self._is_valid_channel_value(val)
-    
-    def _validate_bank_channels(self, bank_channels):
-        """
-        Validate a bank channels array (4 channel values).
-        Accepts null/empty for entire array or individual elements.
-        
-        Args:
-            bank_channels: The array to validate (can be None, empty, or list)
-            
-        Returns:
-            bool: True if valid, False otherwise
-        """
-        # Null or empty array means inherit from page
-        if self._is_empty_or_null(bank_channels):
-            return True
-        if not isinstance(bank_channels, list) or len(bank_channels) != 4:
-            return False
-        return all(self._validate_channel_value(ch) for ch in bank_channels)
     
     def _get_page_channels(self, page_idx):
         """
@@ -528,23 +479,6 @@ class Settings:
         if self._is_empty_or_null(val):
             return True
         return val in self.VALID_MESSAGE_TYPES
-    
-    def _validate_bank_types(self, bank_types):
-        """
-        Validate a bank types array (4 type values).
-        Accepts null/empty for entire array or individual elements.
-        
-        Args:
-            bank_types: The array to validate (can be None, empty, or list)
-            
-        Returns:
-            bool: True if valid, False otherwise
-        """
-        if self._is_empty_or_null(bank_types):
-            return True
-        if not isinstance(bank_types, list) or len(bank_types) != 4:
-            return False
-        return all(self._is_valid_message_type(t) for t in bank_types)
     
     def get_global_message_type(self):
         """

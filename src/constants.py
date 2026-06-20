@@ -4,26 +4,17 @@ from settings import settings
 LONG_HOLD_THRESH_S = 0.5
 DOUBLE_PRESS_TIME = 0.3  # Time in seconds to detect double press
 
-# Smoothing factors
-SLOW_SMOOTHING_FACTOR = 0.2
-FAST_SMOOTHING_FACTOR = 0.85
-MOVEMENT_THRESHOLD = 1000
-
-# Middle Range Noise Reduction
-MIDDLE_RANGE_START = 30000
-MIDDLE_RANGE_END = 40000
-MIDDLE_RANGE_SMOOTHING_FACTOR = 0.05
-
 # CC Threshold
 CC_THRESHOLD = 2
 
+# Slider lights show the last-sent value (not the live position) until the
+# slider comes within this many CC steps of it, so the LED reflects pickup state.
+SLIDER_LIGHT_PICKUP_THRESHOLD = 4
+
 # Adaptive Smoothing Constants
-ADAPTIVE_BUFFER_SIZE = 5
 ADAPTIVE_STABLE_THRESHOLD_CC = 3  # CC threshold when in stable mode
 ADAPTIVE_MOVING_THRESHOLD_CC = 1  # CC threshold when in moving mode
-ADAPTIVE_STABILITY_RANGE = 3      # Max range in buffer to consider "stable"
 ADAPTIVE_HOLD_DURATION = 1.0      # Time to wait before switching to stable mode (seconds)
-ADAPTIVE_MIN_MOVING_DURATION = 0.2  # Minimum time in moving mode (seconds)
 ADAPTIVE_SMOOTHING_FACTOR = 0.3   # Exponential smoothing factor for raw values
 ADAPTIVE_RAW_TO_CC_DIVISOR = 512  # 65536 / 128 = 512 (ADC range / CC range)
 
@@ -44,8 +35,7 @@ MAX_LOOP_EVENTS = 4000          # Per-loop CC/AT event cap. One recording captur
 MAX_LOOP_MS = 60000             # Per-loop length cap (forced by 'H' array timestamp width)
 MEMORY_CRITICAL_THRESHOLD = 40000  # gc.mem_free() floor; an in-flight recording
                                 # auto-stops below this. Raised from 15000 after
-                                # on-device measurement (Record_mode_expansion_plan
-                                # §1): with 4 pads per CC set the heap fragments,
+                                # on-device measurement: with 4 pads per CC set the heap fragments,
                                 # and uniform 1500-event pads crashed growing the
                                 # 14th pad at ~41.6 KB free. This backstop sits
                                 # just above that band.
@@ -84,7 +74,7 @@ NUM_RECORD_CC_SETS = 1 + len(PAGES) * 4
 
 # Colors
 GLOBAL_BANK_COLOR = (200, 155, 55)  # A separate color for the global bank
-JUMP_MODE_COLOR = (255, 165, 0)     # Orange for jump mode
+JUMP_MODE_COLOR = (255, 140, 0)     # Orange for jump mode (matches COLORS["ORANGE"])
 REG_MODE_COLOR = (0, 255, 0)        # Green for regular mode
 PAGE_INDICATOR_COLOR = (255, 255, 255)  # White for page indicator
 
@@ -116,7 +106,7 @@ COLORS = {
     "CYAN": (0, 255, 255),
     "MAGENTA": (255, 0, 255),
     "ORANGE": (255, 140, 0),
-    "LIME": (0, 255, 0),
+    "LIME": (170, 255, 0),
     "TEAL": (0, 128, 128),
     "NAVY": (0, 0, 128),
     "BROWN": (165, 42, 42),
@@ -124,7 +114,7 @@ COLORS = {
     "YELLOW": (255, 255, 0),
     "INDIGO": (75, 0, 130),
     "CORAL": (255, 127, 80),
-    "FUCHSIA": (255, 0, 255),
+    "FUCHSIA": (255, 0, 128),
     "TOMATO": (255, 85, 65),
 }
 PAGE_COLORS = [

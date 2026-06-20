@@ -1,5 +1,3 @@
-# Version 1.3
-
 import time
 import board
 import digitalio
@@ -57,7 +55,7 @@ while True:
     if midi_controller.mapping_mode_active:
         # Mapping Mode owns the whole strip (the normal update_slider_lights /
         # update_buttons / indicate_locked_bank calls would overwrite it every
-        # frame, gotcha 8.3)
+        # frame)
         lights_manager.update_mapping_mode(
             midi_controller.mapping_target_slider,
             midi_controller.mapping_confirm_slider,
@@ -97,7 +95,7 @@ while True:
     if hold_pixels_lit > 0:
         lights_manager.update_mode_hold_progress(hold_pixels_lit)
 
-    # Mapping Mode draws pixel 68 itself (the blue blink, §2j) - don't let
+    # Mapping Mode draws pixel 68 itself (the blue blink) - don't let
     # the normal jump-mode indicator overwrite it every frame.
     if not midi_controller.mapping_mode_active:
         lights_manager.indicate_jump_mode(jump_mode_enabled)
