@@ -13,7 +13,6 @@ storage.remount("/", readonly=False)
 m = storage.getmount("/")
 m.label = "LUMAFADER"
 
-# Set up all 4 buttons
 btn0 = digitalio.DigitalInOut(board.GP0)
 btn0.direction = digitalio.Direction.INPUT
 btn0.pull = digitalio.Pull.UP
@@ -30,12 +29,12 @@ btn3 = digitalio.DigitalInOut(board.GP3)
 btn3.direction = digitalio.Direction.INPUT
 btn3.pull = digitalio.Pull.UP
 
-# All buttons pressed = all values are False (LOW due to pull-up)
+# With pull-ups, a pressed button reads LOW (value = False)
 all_pressed = not btn0.value and not btn1.value and not btn2.value and not btn3.value
 
-# Hold all 4 buttons at boot to expose the USB drive for editing files:
-#   all_pressed=True  -> mount read-only to the device + enable USB drive (host can edit)
-#   all_pressed=False -> mount writable for the device + disable USB drive (normal operation)
+# Hold all 4 buttons at boot to expose the USB drive for editing files.
+# Held: device is read-only, USB drive visible to host.
+# Not held: device has write access, USB drive hidden (normal operation).
 storage.remount("/", readonly=all_pressed)
 
 if all_pressed:

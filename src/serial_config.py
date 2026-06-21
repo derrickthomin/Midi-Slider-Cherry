@@ -1,26 +1,5 @@
-"""
-LumaFader - Serial Configuration Handler
-=========================================
-Handles serial commands for reading/writing settings via Web Serial API.
-
-Uses USB CDC console (single serial port mode).
-Disconnect any serial monitor before using web config.
-
-Protocol:
----------
-Commands are newline-terminated strings starting with "CMD:".
-Responses are newline-terminated strings starting with "RSP:".
-
-CMD:PING               - Returns RSP:{"status":"ok","device":"lumafader"}
-CMD:GET_SETTINGS       - Returns RSP:<settings json>
-CMD:GET_CAPS           - Returns RSP:<firmware capabilities>
-CMD:SET_SETTINGS|json  - Updates settings from JSON, saves to file
-CMD:GET_STATUS         - Returns RSP:<current device state for interactive UI>
-CMD:SET_CONFIG_MODE|N  - Enable (1) or disable (0) config mode
-CMD:SET_LOCKED_BANK|N  - Lock bank N (0-3), or -1 to unlock
-CMD:START_LEARN|N      - Start MIDI learn for slider N (0-3)
-CMD:STOP_LEARN         - Stop/cancel MIDI learn
-"""
+# Serial config handler for Web Serial API; protocol: CMD:* / RSP:* newline-terminated.
+# Commands: PING, GET_SETTINGS, GET_CAPS, SET_SETTINGS, GET_STATUS, SET_CONFIG_MODE, SET_LOCKED_BANK, START_LEARN, STOP_LEARN
 
 import json
 import sys
@@ -36,8 +15,6 @@ SERIAL_PROTOCOL_VERSION = 1
 
 
 class SerialConfigHandler:
-    """Handles serial commands for configuration via USB serial."""
-    
     def __init__(self):
         self._buffer = ""
         self._controller = None
@@ -69,11 +46,7 @@ class SerialConfigHandler:
         self._midi_manager = midi_manager
     
     def update(self):
-        """
-        Check for and process serial commands.
-        Call this from the main loop.
-        Returns True if a command was processed.
-        """
+        """Poll and process serial commands; return True if one processed."""
         # Check config mode timeout
         if self._config_mode and (time.monotonic() - self._last_ping_time) > CONFIG_MODE_TIMEOUT:
             self._config_mode = False
@@ -137,7 +110,7 @@ class SerialConfigHandler:
         return False
     
     def _process_command(self, command):
-        """Process a single command and send response."""
+        """Dispatch and process command; send response."""
         try:
             if command == "PING":
                 self._last_ping_time = time.monotonic()

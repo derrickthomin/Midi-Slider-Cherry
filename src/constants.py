@@ -1,14 +1,10 @@
 from settings import settings
 
-# Thresholds
 LONG_HOLD_THRESH_S = 0.5
 DOUBLE_PRESS_TIME = 0.3  # Time in seconds to detect double press
-
-# CC Threshold
 CC_THRESHOLD = 2
 
-# Slider lights show the last-sent value (not the live position) until the
-# slider comes within this many CC steps of it, so the LED reflects pickup state.
+# Slider LEDs show the last-sent value until the slider comes within this many CC steps of it.
 SLIDER_LIGHT_PICKUP_THRESHOLD = 4
 
 # Adaptive Smoothing Constants
@@ -16,9 +12,8 @@ ADAPTIVE_STABLE_THRESHOLD_CC = 3  # CC threshold when in stable mode
 ADAPTIVE_MOVING_THRESHOLD_CC = 1  # CC threshold when in moving mode
 ADAPTIVE_HOLD_DURATION = 1.0      # Time to wait before switching to stable mode (seconds)
 ADAPTIVE_SMOOTHING_FACTOR = 0.3   # Exponential smoothing factor for raw values
-ADAPTIVE_RAW_TO_CC_DIVISOR = 512  # 65536 / 128 = 512 (ADC range / CC range)
+ADAPTIVE_RAW_TO_CC_DIVISOR = 512  # ADC range (65536) / CC range (128)
 
-# CC Value Range
 MIN_CC_VALUE = 0
 MAX_CC_VALUE = 127
 
@@ -64,12 +59,10 @@ MAPPING_COLOR = (0, 0, 255)         # blue
 MAPPING_CONFIRM_COLOR = (0, 255, 0)  # green
 MAPPING_FAIL_COLOR = (255, 0, 0)     # red
 
-# Global CC Bank and Pages from settings
 GLOBAL_CC_BANK = settings.get_global_cc_bank()
 PAGES = settings.get_all_pages()
 
-# Record Mode CC sets: 0 = global bank, then 4 banks per page across all pages
-# (set N -> page (N-1)//4, bank (N-1)%4). Navigation clamps at both ends (no wrap).
+# Set 0 = global bank; sets 1+ map to page (N-1)//4, bank (N-1)%4. No wrap.
 NUM_RECORD_CC_SETS = 1 + len(PAGES) * 4
 
 # Colors
@@ -87,10 +80,7 @@ RECORD_STOPPED_COLOR = (255, 255, 255)  # White while a recorded loop is stopped
                                         # when the bank's own color is red or green.
 RECORD_DELETE_BLINK_S = 0.15           # Delete-armed red blink phase length
 RECORD_SET_FLASH_S = 0.25              # CC-set navigation flash duration
-# Every CC-set step flashes the landed set's bank button in that page's color:
-# the button position encodes the bank, the color encodes the page. So going up
-# lands on bank 1 (bottom button) and walks up; going down lands on bank 4 (top
-# button) and walks down. The global set blanks all four buttons instead.
+# Each CC-set step flashes the landed bank button in its page color; global set blanks all four.
 RECORD_PAGE_FLASH_COLORS = [
     (0, 120, 255),    # page 1 - blue
     (0, 255, 120),    # page 2 - green

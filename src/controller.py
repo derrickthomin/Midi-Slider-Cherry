@@ -9,19 +9,7 @@ from wiggle import SliderWiggleDetector
 import constants as cfg
 
 class MidiController:
-    """
-    Controls the interaction between hardware inputs (sliders and buttons) and MIDI output.
-
-    Responsibilities:
-    - Reading input states (buttons/sliders).
-    - Mapping change events to MIDI control change (CC) messages.
-    - Managing active and locked banks.
-    """
-
     def __init__(self, slider_pins, button_pins):
-        """
-        Initialize the MidiController with slider and button pins.
-        """
         self.sliders = []
         self.buttons = []
         self.slider_pins = slider_pins
@@ -137,36 +125,22 @@ class MidiController:
         self.setup_channel_lookup()
 
     def setup_sliders(self):
-        """
-        Initializes the slider objects using the given slider pins.
-        """
         for idx, pin in enumerate(self.slider_pins):
             self.sliders.append(MidiSlider(pin, idx))
 
     def setup_buttons(self):
-        """
-        Initializes the button objects using the given button pins.
-        """
         for pin in self.button_pins:
             self.buttons.append(BankButton(pin))
 
     def update_inputs(self):
-        """
-        Updates all sliders and buttons and sets 'has_anything_changed' if any input changed.
-        Returns:
-            bool: True if any slider or button changed state, False otherwise.
-        """
+        """Update all sliders and buttons. Return True if any changed state."""
         slider_changes = [slider.update() for slider in self.sliders]
         button_changes = [button.update() for button in self.buttons]
         self.has_anything_changed = any(slider_changes + button_changes)
         return self.has_anything_changed
 
     def process_inputs(self):
-        """
-        Processes input changes. Determines if any bank/bank-group changes are needed.
-        Also checks if Jump Mode should toggle based on button events.
-        In Record Mode, button events drive the loop slots instead (gestures branch).
-        """
+        """Process input changes: bank/group changes, Jump Mode toggle, Record/Mapping Mode gestures."""
         # Record-mode machinery is time-based (hold timer, delete window,
         # playback pump) and must run every iteration, even with no input
         # changes.
@@ -274,11 +248,7 @@ class MidiController:
         self.send_cc_messages()
 
     def handle_lock_changes(self):
-        """
-        Checks if any button was double-pressed to lock/unlock the corresponding bank.
-        Also handles unlocking once all buttons are released, if 'unlock_pending' is set.
-        In config mode, single click locks/toggles banks instead of double-press.
-        """
+        """Detect double-press to lock/unlock banks. In config mode, single-click locks."""
         # Check button states
         all_buttons_released = all(not button.pressed for button in self.buttons)
         any_new_button_press = any(button.detected_new_press for button in self.buttons)
@@ -344,17 +314,11 @@ class MidiController:
             return
 
     def lock_bank(self, bank_idx):
-        """
-        Locks the given bank index and updates the active bank accordingly.
-        """
         self.locked_bank_idx = bank_idx
         self.unlock_pending = False
         self.update_active_bank()
 
     def unlock_bank(self):
-        """
-        Unlocks any currently locked bank and updates the active bank.
-        """
         if self.locked_bank_idx != -1:
             # Track which bank was unlocked and when (for double-press filtering)
             self._last_unlocked_bank_idx = self.locked_bank_idx
@@ -364,12 +328,7 @@ class MidiController:
             self.update_active_bank()
 
     def send_cc_messages(self):
-        """
-        Sends MIDI messages for any slider whose value changed, if 'should_send_cc' returns True.
-        Supports multi-channel output where each page/bank/slider can send to multiple MIDI channels.
-        Handles both CC (Control Change) and AT (Channel Aftertouch) message types.
-        Each bank (primary and additional) sends according to its own type setting.
-        """
+        """Send MIDI for sliders with value changes; supports multi-channel and CC/AT types."""
         for slider_idx, slider in enumerate(self.sliders):
             if slider.cc_value_changed:
                 # Determine main channels and message type
@@ -408,24 +367,7 @@ class MidiController:
                     slider.cc_value_changed = False
 
     def should_send_cc(self, slider, slider_idx, channel, message_type="CC", bank_idx=-1, page_idx=None):
-        """
-        Determines whether a MIDI message should be sent based on pickup mode logic.
-
-        This method implements "pickup mode" where sliders only send values after
-        physically crossing the last sent value, preventing sudden jumps in parameter values.
-
-        Args:
-            slider (MidiSlider): The slider object to check
-            slider_idx (int): Index of the slider (0-3)
-            channel (int): The MIDI channel (0-indexed) for this slider's current bank
-            message_type (str): "CC" for Control Change, "AT" for Channel Aftertouch
-            bank_idx (int): Bank index (-1 for global, 0-3 for banks)
-            page_idx (int): Page index for AT per-slider tracking; None = current page
-                (Record Mode passes 0 since its sets all live on page 1)
-
-        Returns:
-            bool: True if a message should be sent, False otherwise
-        """
+        """Implement pickup mode: only send after physically crossing the last sent value."""
         cc_number = slider.current_assigned_cc_number
         cc_value = slider.cc_value
         if page_idx is None:
@@ -478,14 +420,7 @@ class MidiController:
         return False
 
     def update_held_button_indices(self):
-        """
-        Updates 'held_button_order' to track button press order.
-        
-        - New presses are appended to the list (preserving order)
-        - Released buttons are removed from wherever they are in the list
-        - First element is the primary bank, rest are additional
-        - When list is empty, we're in global bank mode
-        """
+        """Track button press order. First is primary; empty list = global mode."""
         # Add newly pressed buttons to the end of the order list
         for idx, button in enumerate(self.buttons):
             if button.detected_new_press and idx not in self.held_button_order:
@@ -506,10 +441,7 @@ class MidiController:
         return self.additional_bank_indices
 
     def update_active_bank(self):
-        """
-        Decides which bank is active based on locked bank index or the primary held button.
-        Then updates slider CC assignments if necessary.
-        """
+        """Set active bank from lock or primary held button; update slider CC assignments if changed."""
         previous_bank_idx = self.current_bank_idx
         previous_additional_indices = list(self.additional_bank_indices)
 
@@ -526,14 +458,7 @@ class MidiController:
             self.update_slider_cc_assignments()
 
     def update_slider_cc_assignments(self):
-        """
-        Updates each slider's CC assignments based on the current active bank.
-        
-        This method:
-        1. Assigns the primary CC number from the current bank
-        2. Adds any additional CC numbers from simultaneously held buttons
-        3. Resets pickup-mode tracking values to ensure smooth transitions
-        """
+        """Assign primary and additional CC numbers from held buttons; reset pickup tracking."""
         current_cc_bank = self.get_current_cc_bank()
 
         for idx, slider in enumerate(self.sliders):
@@ -573,9 +498,6 @@ class MidiController:
             slider.cc_value_changed = False
 
     def setup_cc_banks(self):
-        """
-        Prepares the main and per-page CC banks.
-        """
         self.global_cc_bank = cfg.GLOBAL_CC_BANK
 
         self.pages = cfg.PAGES
@@ -585,12 +507,7 @@ class MidiController:
             slider.current_assigned_cc_number = self.global_cc_bank[idx]
 
     def setup_channel_lookup(self):
-        """
-        Precomputes the MIDI channel lookup table for all pages, banks, and sliders.
-        Also stores the global slider channels for per-slider overrides in the global bank.
-        Each entry is a list of channels to support multi-channel output.
-        Additionally precomputes message type lookup for CC vs Aftertouch.
-        """
+        """Precompute MIDI channel and message-type lookup tables for pages, banks, sliders."""
         self.global_channels = settings.get_global_channels()
         self.global_message_type = settings.get_global_message_type()
 
@@ -616,18 +533,11 @@ class MidiController:
         ]
 
     def get_current_cc_bank(self):
-        """
-        Returns the CC bank list for the currently active bank index,
-        or the global CC bank if current_bank_idx is -1.
-        """
         if self.current_bank_idx == -1:
             return self.global_cc_bank
         return self.pages[self.current_page_idx][self.current_bank_idx]
 
     def get_additional_cc_numbers(self, idx):
-        """
-        Returns extra CC numbers from other held buttons' banks for the slider at 'idx'.
-        """
         additional_cc_numbers = []
         for button_idx in self.additional_bank_indices:
             bank = self.pages[self.current_page_idx][button_idx]
@@ -635,10 +545,7 @@ class MidiController:
         return additional_cc_numbers
 
     def next_page(self):
-        """
-        Moves to the next page if available (no wrap-around).
-        Enters page change mode - hides all button colors until exit button released.
-        """
+        """Move to next page (no wrap); enter page-change mode."""
         current_time = time.monotonic()
         new_idx = self.current_page_idx + 1
         
@@ -661,10 +568,7 @@ class MidiController:
                 self.page_limit_blink_locked = True
 
     def previous_page(self):
-        """
-        Moves to the previous page if available (no wrap-around).
-        Enters page change mode - hides all button colors until exit button released.
-        """
+        """Move to previous page (no wrap); enter page-change mode."""
         current_time = time.monotonic()
         new_idx = self.current_page_idx - 1
         
@@ -687,21 +591,7 @@ class MidiController:
                 self.page_limit_blink_locked = True
 
     def update_page_change_feedback(self):
-        """
-        Returns current page change mode feedback state for use by the lights manager.
-        
-        When in page change mode, all button colors are hidden - only the page indicator
-        (white dot) is shown, or the blink animation if at a limit.
-        
-        Blink cycle is on-off-on to ensure visibility even with repeated attempts.
-        
-        Returns:
-            dict: {
-                'page_change_mode': bool (True if in page change mode - hide all button colors),
-                'blink_button_idx': int (-1 if none),
-                'blink_off': bool (True if we're in the "off" phase of the blink)
-            }
-        """
+        """Return page-change-mode feedback: blink state, page indicator, limit blink."""
         current_time = time.monotonic()
         blink_button_idx = -1
         blink_off = False
@@ -725,14 +615,8 @@ class MidiController:
             'blink_off': blink_off
         }
 
-    # ==================== Record Mode ====================
-
     def update_record_mode_state(self):
-        """
-        Time-based Record Mode machinery, run every main-loop iteration
-        regardless of input changes: the hold-all-four toggle timer, the
-        delete-confirm window, recording caps, and the playback pump.
-        """
+        """Run time-based Record Mode machinery: hold timer, delete window, caps, playback."""
         now = time.monotonic()
 
         # Web config mode and Record Mode are mutually exclusive
@@ -875,13 +759,12 @@ class MidiController:
 
     def _enter_record_mode(self):
         self.record_mode_active = True
-        self.record_cc_set_idx = 0  # Always start in the global set
-        self.loop_manager.set_active_set(0)  # 4 pads per set; start on the global set's pads
+        self.record_cc_set_idx = 0  # Start in global set
+        self.loop_manager.set_active_set(0)
         self.update_record_slider_assignments()
 
     def _exit_record_mode(self):
-        """Exit Record Mode: finalize any recording, cancel an armed
-        delete (loop kept, left stopped), stop all loops (they stay in RAM)."""
+        """Exit Record Mode: finalize recordings, cancel delete-arms, stop all loops."""
         self.record_mode_active = False
 
         if self.loop_manager.is_recording:
@@ -904,13 +787,8 @@ class MidiController:
             self._slot_prev_play_state[idx] = False
             self._slot_ignore_press_until[idx] = 0.0
 
-    # -------------------- Record Mode input processing --------------------
-
     def process_record_mode_inputs(self, swallowed):
-        """
-        Record-mode replacement for the normal gesture handling. All
-        normal-mode gestures are inert here except set navigation.
-        """
+        """Record-mode gestures: all normal gestures inert except set navigation."""
         # Exit set-navigation mode when its initiating button is released
         # (mirrors page change mode)
         if self._rec_nav_active:
@@ -938,13 +816,7 @@ class MidiController:
         self.send_record_mode_cc()
 
     def _handle_set_navigation(self, swallowed):
-        """
-        Step through the 5 CC sets with the page-change gesture (hold bottom +
-        click top = next, hold top + click bottom = previous), with wrap.
-        First step fires on release, subsequent steps on click while in
-        navigation mode - mirroring the normal-mode page-change structure.
-        Returns True if a navigation event was consumed.
-        """
+        """Step through CC sets with page-change gesture. Return True if consumed."""
         top_button = self.buttons[3]
         bottom_button = self.buttons[0]
         middles_idle = not self.buttons[1].pressed and not self.buttons[2].pressed
@@ -988,14 +860,13 @@ class MidiController:
         return False
 
     def _cancel_slot_click(self, slot_idx):
-        """Remove a button's pending click state (it was used by another gesture)."""
+        """Clear pending click state for a slot (button used by another gesture)."""
         self._slot_last_press_time[slot_idx] = 0.0
         self._slot_pending_record[slot_idx] = False
 
     def _step_record_set(self, direction):
         new_idx = self.record_cc_set_idx + direction
-        # No wrap: clamp at the ends - stepping past global or the last page's
-        # last bank does nothing.
+        # No wrap; clamp at ends
         if new_idx < 0 or new_idx >= cfg.NUM_RECORD_CC_SETS:
             return
         self._cancel_delete_arm(restore=True)
@@ -1020,14 +891,7 @@ class MidiController:
         self._set_flash_time = time.monotonic()
 
     def _record_set_lookup(self, slider_idx):
-        """
-        Resolve the active record CC set for one slider.
-        Set 0 = global bank; sets 1+ = page (set-1)//4, bank (set-1)%4.
-
-        Returns:
-            (cc_number, channels, message_type, bank_idx, page_idx) - bank_idx
-            is -1 for global; page_idx is 0 for global (AT tracking key).
-        """
+        """Resolve active record CC set. Returns (cc_number, channels, message_type, bank_idx, page_idx)."""
         set_idx = self.record_cc_set_idx
         if set_idx == 0:
             return (cfg.GLOBAL_CC_BANK[slider_idx],
@@ -1042,11 +906,7 @@ class MidiController:
                 bank_idx, page_idx)
 
     def update_record_slider_assignments(self):
-        """
-        Record-mode equivalent of update_slider_cc_assignments: assign each
-        slider's CC from the active set and reset pickup tracking. Run on every
-        set change, including Record Mode entry.
-        """
+        """Record-mode CC assignment: assign from active set, reset pickup tracking."""
         for idx, slider in enumerate(self.sliders):
             cc_number, channels, message_type, bank_idx, page_idx = self._record_set_lookup(idx)
             slider.current_assigned_cc_number = cc_number
@@ -1063,8 +923,6 @@ class MidiController:
             else:
                 slider.has_crossed_last_cc_value = False
             slider.cc_value_changed = False
-
-    # -------------------- Per-slot click state machine --------------------
 
     def _process_slot_clicks(self, swallowed):
         now = time.monotonic()
@@ -1175,8 +1033,6 @@ class MidiController:
             self.loop_manager.toggle_playstate(slot_idx, True)
         # SLOT_EMPTY: no-op
 
-    # -------------------- Delete arm / confirm / cancel --------------------
-
     def _arm_delete(self, slot_idx, now):
         self._delete_armed_slot = slot_idx
         self._delete_armed_time = now
@@ -1205,14 +1061,8 @@ class MidiController:
                 and now - self._delete_armed_time > cfg.DELETE_CONFIRM_WINDOW_S):
             self._cancel_delete_arm(restore=True)
 
-    # -------------------- Sending / recording / playback --------------------
-
     def send_record_mode_cc(self):
-        """
-        Record-mode fader output: same live send path as normal mode but with
-        the active CC set's lookups, plus the recording tap - events go
-        both to MIDI out and into the recording loop, after the pickup check.
-        """
+        """Record-mode fader output: live send + recording tap to active set."""
         recording_loop = self.loop_manager.get_recording_loop()
 
         for slider_idx, slider in enumerate(self.sliders):
@@ -1240,13 +1090,7 @@ class MidiController:
             slider.cc_value_changed = False
 
     def process_loop_playback(self):
-        """
-        Playback pump: collect due events from every loop in EVERY set and send
-        them - loops recorded in other banks keep playing while a different bank
-        is on screen (layered multi-bank looper). Safe to call unconditionally -
-        stopped/recording loops return None. Playback goes through midi_manager
-        so its de-dupe and pickup state stay consistent with reality.
-        """
+        """Playback pump: collect and send due events from all loops in all sets."""
         for loop in self.loop_manager.iter_all_loops():
             events = loop.get_new_events()
             if not events:
@@ -1258,14 +1102,11 @@ class MidiController:
                 midi_manager.send_aftertouch([channel], pressure)
 
     def _stop_loop_with_reset(self, slot_idx):
-        """Stop a slot's loop in the active set; if cc_reset is enabled, snap back
-        to the loop's first recorded values for exactly the (CC, channel) pairs it
-        recorded."""
+        """Stop slot's loop; if cc_reset enabled, snap to first values."""
         self._stop_loop_obj_with_reset(self.loop_manager.loops[slot_idx])
 
     def _stop_loop_obj_with_reset(self, loop):
-        """Stop a loop object (any set) with the same cc_reset snap-back as
-        _stop_loop_with_reset. Used for all-set cleanup / hold-stop-on-leave."""
+        """Stop loop with cc_reset snap-back (any set, any context)."""
         if loop is None or loop.is_recording:
             return
         was_playing = loop.loop_is_playing
@@ -1274,8 +1115,7 @@ class MidiController:
             self._send_cc_reset(loop)
 
     def _stop_hold_loops_in_active_set(self):
-        """Stop playing "hold" loops in the active set (called when navigating
-        away from a bank). "loop" loops are left running."""
+        """Stop playing 'hold' loops in active set (leave 'loop' loops running)."""
         for loop in self.loop_manager.loops:
             if loop is not None and loop.loop_type == "hold" and loop.loop_is_playing:
                 self._stop_loop_obj_with_reset(loop)
@@ -1286,15 +1126,8 @@ class MidiController:
         for channel, first_pressure in loop._first_at_values.items():
             midi_manager.send_aftertouch([channel], first_pressure)
 
-    # -------------------- Lights interface --------------------
-
     def get_record_slot_states(self):
-        """
-        Per-slot display state (active set) for the LightsManager: one of
-        "empty", "recording", "playing", "stopped", "delete_armed" per slot.
-        The lights pick the color (stopped renders white, RECORD_STOPPED_COLOR,
-        so state reads independently of the bank's own color).
-        """
+        """Per-slot display state for LightsManager: empty/recording/playing/stopped/delete_armed."""
         states = []
         for slot_idx in range(4):
             if slot_idx == self._delete_armed_slot:
@@ -1304,9 +1137,7 @@ class MidiController:
         return states
 
     def get_set_flash(self):
-        """CC-set navigation flash: the landed set index to flash, or -1
-        when no flash is active. The lights render it on the set's bank button
-        in the page color (set 0 / global blanks all four buttons)."""
+        """Return CC-set navigation flash index, or -1 if none."""
         if self._set_flash_set_idx == -1:
             return -1
         if time.monotonic() - self._set_flash_time > cfg.RECORD_SET_FLASH_S:
@@ -1315,15 +1146,12 @@ class MidiController:
         return self._set_flash_set_idx
 
     def _trigger_reject_blink(self, slot_idx, now):
-        """Start (or restart) the low-memory reject blink on `slot_idx`.
-        Idempotent: a repeated refused-start just resets the timer."""
+        """Start/restart low-memory reject blink. Idempotent."""
         self._reject_blink_slot = slot_idx
         self._reject_blink_start = now
 
     def get_reject_blink(self):
-        """Low-memory record-reject feedback for the lights: (slot_idx, on) while
-        the 3x red blink plays, else (-1, False). Self-clears after 3 on/off
-        cycles. Phase derived purely from elapsed time so it's non-blocking."""
+        """Return (slot_idx, on) for low-memory reject blink feedback, or (-1, False)."""
         if self._reject_blink_slot == -1:
             return (-1, False)
         elapsed = time.monotonic() - self._reject_blink_start
@@ -1352,27 +1180,20 @@ class MidiController:
 
     @property
     def mapping_bank_button_idx(self):
-        """For bank-scope Mapping Mode, the locked bank's button index to keep
-        lit at its normal color (so it's clear which bank is being assigned);
-        -1 for global scope (buttons stay dark)."""
+        """Bank-scope: button index to keep lit; global scope: -1."""
         if self.mapping_scope is not None and self.mapping_scope[0] == "bank":
             return self.mapping_scope[2]
         return -1
 
     @property
     def mapping_bank_page_idx(self):
-        """Page index for the bank-scope button's normal color (0 otherwise)."""
+        """Bank-scope: page index for button color; global scope: 0."""
         if self.mapping_scope is not None and self.mapping_scope[0] == "bank":
             return self.mapping_scope[1]
         return 0
 
     def update_mapping_mode_state(self):
-        """
-        Time-based Mapping Mode machinery, run every main-loop iteration
-        regardless of input changes: bank-entry wiggle context
-        capture, wiggle polling for whichever entry context is armed, and -
-        while active - the cancel/exit/retarget/learn logic.
-        """
+        """Run time-based Mapping Mode machinery: wiggle detection, learn poll, confirm/cancel."""
         now = time.monotonic()
 
         # Record Mode and web config are mutually exclusive with Mapping Mode.
@@ -1390,10 +1211,7 @@ class MidiController:
             self._poll_wiggle_detectors(now)
 
     def _update_bank_entry_wiggle(self, now):
-        """Capture/maintain the bank-entry Mapping Mode context: arm when a
-        press lands on the currently-locked bank's button
-        (before handle_lock_changes can unlock it), disarm on that button's
-        release."""
+        """Capture/maintain bank-entry Mapping Mode context: arm on press, disarm on release."""
         if self._bank_entry_armed:
             if not self.buttons[self._bank_entry_button_idx].pressed:
                 self._bank_entry_armed = False
@@ -1418,19 +1236,14 @@ class MidiController:
                 break
 
     def _poll_wiggle_detectors(self, now):
-        """Feed slider samples to the wiggle detectors for whichever entry
-        context (global or bank) is currently armed; act on the first
-        completion (one target at a time)."""
+        """Feed slider samples to wiggle detectors; act on first completion."""
         for idx, (slider, detector) in enumerate(zip(self.sliders, self._wiggle_detectors)):
             if detector.update(slider.cc_value, now):
                 self._on_wiggle_complete(idx)
                 return
 
     def _on_wiggle_complete(self, slider_idx):
-        """A wiggle completed on `slider_idx` for the currently-armed entry
-        context. AT-type scopes block entry - the wiggle
-        does nothing besides disarming that one slider's detector so it
-        doesn't keep re-triggering."""
+        """Wiggle completed on slider_idx. AT-type scopes block entry."""
         if self._global_wiggle_armed:
             if settings.get_global_message_type() == "AT":
                 self._wiggle_detectors[slider_idx].disarm()
@@ -1454,8 +1267,7 @@ class MidiController:
             self._enter_mapping_mode(slider_idx, ("bank", page_idx, bank_idx))
 
     def _enter_mapping_mode(self, slider_idx, scope):
-        """Enter Mapping Mode with `slider_idx` as the initial target,
-        `scope` = ("global",) or ("bank", page_idx, bank_idx)."""
+        """Enter Mapping Mode. scope = ("global",) or ("bank", page_idx, bank_idx)."""
         self.mapping_mode_active = True
         self.mapping_scope = scope
         self.mapping_target_slider = slider_idx
@@ -1488,9 +1300,7 @@ class MidiController:
         self.page_just_changed = False
 
     def _update_mapping_mode_active(self, now):
-        """Mapping Mode's per-iteration logic: deferred flash write,
-        confirm-flash expiry, cancel button, exit wiggle, retarget, and the
-        learn poll."""
+        """Per-iteration logic: deferred flash write, confirm expiry, cancel, exit wiggle, retarget, learn poll."""
         # Deferred flash write: _apply_mapping applied the mapping live and lit
         # the green flash last iteration, so that green frame has already
         # rendered. Do the blocking write now; downgrade to red on failure, and
@@ -1546,15 +1356,13 @@ class MidiController:
                 midi_manager.flush_receive_buffer()
 
     def _reset_learn_accumulator(self):
-        """Clear the learn-debounce state (no partial count carries across a
-        target change, a commit, or entry/exit)."""
+        """Clear learn-debounce state (no carry across target change or commit)."""
         self._learn_candidate = None
         self._learn_count = 0
         self._learn_last_msg_time = 0.0
 
     def _retarget_mapping(self, slider_idx):
-        """Retarget the learn target to `slider_idx`: re-baseline all
-        sliders and flush stale incoming MIDI."""
+        """Retarget learn to slider_idx; re-baseline and flush stale MIDI."""
         self.mapping_target_slider = slider_idx
         for idx, slider in enumerate(self.sliders):
             self._mapping_select_baseline[idx] = slider.cc_value
@@ -1562,11 +1370,7 @@ class MidiController:
         midi_manager.flush_receive_buffer()
 
     def _apply_mapping(self, slider_idx, cc_number, channel):
-        """Commit a successful learn: apply it LIVE and light the green
-        confirm flash immediately, then defer the blocking flash write one
-        iteration so the green frame renders before the write stalls the loop
-        (the write happens in _update_mapping_mode_active, downgrading to red if
-        it fails)."""
+        """Commit learn: apply live + green flash; defer write to next iteration."""
         scope = self.mapping_scope
         if scope[0] == "global":
             applied = settings.set_global_slider_mapping(slider_idx, cc_number, channel, persist=False)
@@ -1588,9 +1392,7 @@ class MidiController:
         self._mapping_pending_save = applied  # only persist a live-applied map
 
     def _exit_mapping_mode(self):
-        """Exit Mapping Mode: clear all mapping state,
-        re-lock the bank for bank scope, and refresh slider CC assignments /
-        pickup state for a jump-free resume."""
+        """Exit Mapping Mode: clear state, re-lock bank, refresh slider CC and pickup."""
         scope = self.mapping_scope
 
         # If a learn was applied live but its deferred flash write hadn't run

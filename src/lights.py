@@ -7,17 +7,7 @@ from settings import settings
 import constants as cfg
 
 class LightsManager:
-    """
-    Manages the NeoPixel LEDs on the MIDI controller.
-
-    - Pixel index 0 is next to the bottom-left button.
-    - Pixel index 4 is the bottom pixel next to slider 1.
-    - Pixel index 68 is the single pixel above all of the sliders (indicator pixel).
-
-    This class provides methods to update LEDs based on slider positions,
-    button states, and other functionalities.
-    """
-
+    # Pixel 0-3: buttons; 4-67: slider bars (16 pixels each); 68: indicator pixel above sliders
     def __init__(self, num_pixels=69, pixel_pin=board.GP15, brightness=0.2):
         self.num_pixels = num_pixels
         self.pixel_pin = pixel_pin
@@ -59,22 +49,11 @@ class LightsManager:
         self.pixels[self.indicator_pixel_index] = cfg.REG_MODE_COLOR
 
     def clear(self):
-        """
-        Clears all the pixels (sets them to black/off).
-        """
+        """Set all pixels to black/off."""
         self.pixels.fill((0, 0, 0))
 
     def update_slider_lights(self, sliders, bank_idx=0, page_idx=0, held_button_order=None, page_just_changed=False):
-        """
-        Updates the LEDs to reflect the current positions of the sliders.
-
-        Args:
-            sliders (list): A list of slider objects or their CC values (0-127).
-            bank_idx (int): The current bank index (-1 for global).
-            page_idx (int): The current page index.
-            held_button_order (list): List of button indices in press order (for multi-bank morphing).
-            page_just_changed (bool): Whether page was just changed (disables morphing).
-        """
+        """Update slider LEDs for current positions. Morph colors in multi-bank mode."""
         if held_button_order is None:
             held_button_order = []
         
@@ -133,16 +112,7 @@ class LightsManager:
                 self.pixels[pix_idx] = color if i < lit_pixels else (0, 0, 0)
 
     def _get_morphed_color(self, held_button_order, page_idx):
-        """
-        Returns an interpolated color when multiple buttons are held.
-        
-        Args:
-            held_button_order (list): Button indices in press order.
-            page_idx (int): Current page index.
-            
-        Returns:
-            tuple: RGB color tuple, or None if not in multi-bank mode.
-        """
+        """Return interpolated color for multi-bank morph, or None."""
         if len(held_button_order) <= 1:
             return None
         
@@ -170,19 +140,7 @@ class LightsManager:
         )
 
     def update_buttons(self, buttons, page_idx, locked_bank_idx, page_just_changed=False, page_change_feedback=None):
-        """
-        Turns button LEDs on or off based on the button state.
-
-        Args:
-            buttons (list): List of button objects.
-            page_idx (int): Index of the current page.
-            locked_bank_idx (int): Index of the locked bank (-1 if none).
-            page_just_changed (bool): Whether page was just changed (show indicator while navigating).
-            page_change_feedback (dict): Optional feedback state with:
-                - 'page_change_mode': If True, hide all button colors (only show page indicator)
-                - 'blink_button_idx': Button to blink when at limit
-                - 'blink_off': Whether we're in the "off" phase of the blink
-        """
+        """Update button LEDs based on state; show page indicator if no buttons pressed."""
         if locked_bank_idx != -1:
             # If a bank is locked, its lighting is handled separately
             return
@@ -227,13 +185,7 @@ class LightsManager:
                     self.pixels[indicator_idx] = cfg.PAGE_INDICATOR_COLOR
 
     def indicate_locked_bank(self, page_idx, locked_bank_idx):
-        """
-        Lights the button LED for the locked bank.
-
-        Args:
-            page_idx (int): The current page index.
-            locked_bank_idx (int): The locked bank index.
-        """
+        """Light the button LED for the locked bank."""
         for idx, pix_idx in self.button_pixel_indices.items():
             if idx == locked_bank_idx:
                 self.pixels[pix_idx] = cfg.PAGE_COLORS[page_idx][locked_bank_idx]
@@ -241,25 +193,7 @@ class LightsManager:
                 self.pixels[pix_idx] = (0, 0, 0)
 
     def update_record_mode_buttons(self, slot_states, set_flash=-1, reject=(-1, False)):
-        """
-        Draws the Record Mode loop-slot states on the button pixels (replaces
-        update_buttons/indicate_locked_bank while Record Mode is active).
-
-        Args:
-            slot_states (list): 4 state strings from
-                controller.get_record_slot_states(): "empty", "recording",
-                "playing", "stopped", "delete_armed". The color per state is
-                fixed here (stopped = white, RECORD_STOPPED_COLOR).
-            set_flash (int): landed CC set index to flash (-1 = no flash). Sets
-                1+ flash that set's bank pixel ((set-1)%4) in the page's color
-                (RECORD_PAGE_FLASH_COLORS[(set-1)//4]); set 0 (global) briefly
-                blanks all four button pixels. The button position encodes the
-                bank and the color the page, so navigating up lands on bank 1
-                (bottom) and walks up, down lands on bank 4 (top) and walks down.
-            reject ((slot_idx, on)): low-memory record-reject blink from
-                controller.get_reject_blink(); (-1, False) when inactive. Painted
-                last (over slot state + flash) as red on / off on that pad.
-        """
+        """Draw Record Mode slot states on buttons. Overlay set flash and reject blink."""
         now = time.monotonic()
         for idx, state in enumerate(slot_states):
             pixel_index = self.button_pixel_indices[idx]
@@ -294,25 +228,7 @@ class LightsManager:
 
     def update_mapping_mode(self, target_slider_idx, confirm_slider_idx, confirm_active,
                             confirm_failed, bank_button_idx=-1, bank_page_idx=0):
-        """
-        Draws Mapping Mode (on-device MIDI learn): replaces
-        update_slider_lights / update_buttons / indicate_locked_bank /
-        indicate_jump_mode while Mapping Mode is active.
-
-        Args:
-            target_slider_idx (int): Current learn target slider's 16 pixels
-                blink blue (-1 = idle, nothing blinks).
-            confirm_slider_idx (int): Slider showing the confirm flash
-                (-1 = none).
-            confirm_active (bool): True while the confirm flash is showing -
-                overrides the target's blink with a solid color.
-            confirm_failed (bool): True -> red flash (save failed),
-                False -> green (saved).
-            bank_button_idx (int): For bank-scope mapping, the locked bank's
-                button to keep lit at its normal color so the user can see which
-                bank they're assigning. -1 = global scope (all buttons dark).
-            bank_page_idx (int): Page index used for that button's normal color.
-        """
+        """Draw Mapping Mode: target slider blue blink, confirm flash (green/red), bank button lit."""
         self.clear()
 
         blink_on = int(time.monotonic() / cfg.MAPPING_BLINK_S) % 2 == 0
@@ -381,15 +297,11 @@ class LightsManager:
         self.pixels[self.indicator_pixel_index] = cfg.JUMP_MODE_COLOR if enabled else cfg.REG_MODE_COLOR
 
     def show_pixels(self):
-        """
-        Writes the current pixel state to the NeoPixel strip (makes changes visible).
-        """
+        """Write pixel state to NeoPixel strip."""
         self.pixels.show()
 
     def startup_animation(self):
-        """
-        Plays a brief but eye-catching rainbow animation on startup (~2 seconds).
-        """
+        """Play rainbow animation on startup; red blinks if read-only."""
         readonly = storage.getmount("/").readonly
         if readonly:
             # Blink all pixels red 3 times before starting the animation
@@ -404,18 +316,9 @@ class LightsManager:
         self.rainbow_animation(speed=0.002, cycles=2, duration=2.0)
 
     def rainbow_animation(self, speed=0.01, cycles=3, duration=None):
-        """
-        Creates a smooth rainbow animation that cycles across all pixels.
-        
-        Args:
-            speed (float): Speed of the animation (lower is faster)
-            cycles (int): Number of complete color cycles across the strip
-            duration (float, optional): If provided, animation stops after this many seconds
-        """
+        """Smooth rainbow animation cycling across pixels; runs for optional duration."""
         def wheel(pos):
-            """
-            Generate rainbow colors across 0-255 positions.
-            """
+            """Rainbow colors for 0-255 positions."""
             if pos < 85:
                 return (255 - pos * 3, pos * 3, 0)
             elif pos < 170:

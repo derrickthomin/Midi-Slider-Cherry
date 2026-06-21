@@ -1,19 +1,5 @@
-"""
-LumaFader - CC/AT Loop Engine (Record Mode)
-============================================
-Ported from the DJBB Midi Loopster 2 looper.py, stripped down to what the
-LumaFader needs:
-
-- CC + Channel Aftertouch events only (no notes, no arp, no oneshot).
-- Pure wall-clock millisecond timebase (no MIDI clock, no BPM, no quantize).
-- RAM-only storage (no flash streaming / persistence) - loops are session-only.
-- Loop types: "loop" (repeat) and "hold" (gate playback: the controller plays
-  the loop only while its pad is held; the engine parks on the sweep's final
-  values once it completes within a hold).
-
-The engine has no hardware dependencies, so it can be unit-tested off-device.
-All MIDI sending is done by the caller (controller / playback pump).
-"""
+# CC/AT Loop Engine: events only (CC, AT), wall-clock timebase, RAM storage, "loop" and "hold" types.
+# No hardware dependencies; MIDI sending done by caller. Ported from DJBB Midi Loopster 2.
 
 import array
 import gc
@@ -55,7 +41,7 @@ MAX_TIMESTAMP_MS = 65535
 
 
 class ArrayBasedCCStorage:
-    """Array-based MIDI CC/AT event storage for memory efficiency (~5 bytes/event)."""
+    # Memory-efficient CC/AT event storage (~5 bytes/event)
 
     def __init__(self):
         self.cc_nums = array.array('B', [])        # CC numbers (0-127); 0 for aftertouch
@@ -207,8 +193,7 @@ class MidiLoop:
     # ==================== Recording ====================
 
     def _check_recording_guards(self, events_length):
-        """Shared add_cc/add_aftertouch guards. Returns the event's ms offset,
-        or None if the event must not be recorded."""
+        """Shared add_cc/add_aftertouch guards. Return ms offset or None if event blocked."""
         if not self.is_recording or self.start_timestamp == 0:
             return None
 
@@ -233,7 +218,7 @@ class MidiLoop:
         return ms
 
     def add_cc(self, cc_num, cc_value, midi_channel=0):
-        """Record a CC event. Only records if the value changed by more than cc_resolution."""
+        """Record CC if value changed by more than cc_resolution."""
         cache_key = (cc_num, midi_channel)
         last_cc_value = self._last_cc_values.get(cache_key)
         if last_cc_value is not None and abs(cc_value - last_cc_value) <= self._cc_resolution:
@@ -249,7 +234,7 @@ class MidiLoop:
         self.cc_events.add_event(cc_num, cc_value, ms, midi_channel)
 
     def add_aftertouch(self, pressure, midi_channel=0):
-        """Record a Channel Aftertouch event (stored with cc_num=0)."""
+        """Record Channel Aftertouch (cc_num=0)."""
         last_at_value = self._last_at_values.get(midi_channel)
         if last_at_value is not None and abs(pressure - last_at_value) <= self._cc_resolution:
             return
@@ -264,7 +249,7 @@ class MidiLoop:
         self.aftertouch_events.add_event(0, pressure, ms, midi_channel)
 
     def _trim_silence_start(self):
-        """Shift all events earlier so the loop starts on the first recorded event."""
+        """Shift events so loop starts at first event (trim lead-in silence)."""
         first_ms = None
         if len(self.cc_events) > 0:
             first_ms = self.cc_events.timestamps_ms[0]
@@ -295,7 +280,7 @@ class MidiLoop:
             self.reset()
 
     def _process_event_queue(self, current_ms, queue_index, event_storage, new_events):
-        """Collect events due at current_ms. Returns the updated queue index."""
+        """Collect events due at current_ms; return updated queue index."""
         events_len = len(event_storage)
         while queue_index < events_len:
             if event_storage.timestamps_ms[queue_index] <= current_ms:
@@ -308,14 +293,7 @@ class MidiLoop:
         return queue_index
 
     def get_new_events(self):
-        """Get CC/AT events due at the current playback position.
-
-        Returns:
-            (new_cc, new_at) where each is a list of (cc_num, value, channel)
-            tuples (cc_num is 0 for AT entries), or None if nothing is due.
-            Safe to call unconditionally - a loop mid-first-recording returns
-            None because its total length is still 0.
-        """
+        """Return CC/AT events due now: (new_cc, new_at) or None. Safe to call unconditionally."""
         if self.total_loop_ms <= 0 or not self.loop_is_playing or self.is_recording:
             return None
 

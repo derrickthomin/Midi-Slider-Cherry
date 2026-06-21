@@ -8,7 +8,6 @@ from lights import LightsManager
 from midi import midi_manager
 from serial_config import serial_config
 
-# Slider inputs
 slider_pins = [
     analogio.AnalogIn(board.A0),
     analogio.AnalogIn(board.A1),
@@ -16,7 +15,6 @@ slider_pins = [
     analogio.AnalogIn(board.A3),
 ]
 
-# Button inputs
 button_pins = [
     digitalio.DigitalInOut(board.GP0),
     digitalio.DigitalInOut(board.GP1),
@@ -28,19 +26,16 @@ for pin in button_pins:
     pin.direction = digitalio.Direction.INPUT
     pin.pull = digitalio.Pull.UP
 
-# Initialize controller and lights
 midi_controller = MidiController(slider_pins, button_pins)
 lights_manager = LightsManager()
 lights_manager.startup_animation()
 
-# Initialize serial config handler
 serial_config.set_controller(midi_controller)
 serial_config.set_midi_manager(midi_manager)
 
-# Main loop
 while True:
     midi_controller.update_inputs()
-    midi_controller.process_inputs()  # also runs the Record Mode timers + playback pump
+    midi_controller.process_inputs()  # Runs Record Mode timers and playback pump
     serial_config.update()
 
     # Record Mode enter/exit confirmation animation (brief, blocking)
@@ -53,9 +48,7 @@ while True:
     buttons = midi_controller.buttons
 
     if midi_controller.mapping_mode_active:
-        # Mapping Mode owns the whole strip (the normal update_slider_lights /
-        # update_buttons / indicate_locked_bank calls would overwrite it every
-        # frame)
+        # Mapping Mode owns the full strip; normal updates would overwrite it.
         lights_manager.update_mapping_mode(
             midi_controller.mapping_target_slider,
             midi_controller.mapping_confirm_slider,
@@ -65,8 +58,7 @@ while True:
             midi_controller.mapping_bank_page_idx,
         )
     elif midi_controller.record_mode_active:
-        # Record Mode owns the button pixels (the normal update_buttons /
-        # indicate_locked_bank calls would overwrite them every frame)
+        # Record Mode owns the button pixels; normal updates would overwrite them.
         lights_manager.update_slider_lights(
             sliders, midi_controller.record_display_bank_idx,
             midi_controller.record_display_page_idx)
@@ -95,8 +87,7 @@ while True:
     if hold_pixels_lit > 0:
         lights_manager.update_mode_hold_progress(hold_pixels_lit)
 
-    # Mapping Mode draws pixel 68 itself (the blue blink) - don't let
-    # the normal jump-mode indicator overwrite it every frame.
+    # Mapping Mode draws pixel 68 (blue blink); don't let the normal jump-mode indicator overwrite it.
     if not midi_controller.mapping_mode_active:
         lights_manager.indicate_jump_mode(jump_mode_enabled)
     lights_manager.show_pixels()

@@ -1,10 +1,6 @@
 import json
 
 class Settings:
-    """
-    Handles reading and validating settings from a JSON file.
-    Provides default values if the settings file doesn't exist or contains invalid data.
-    """
     
     # Default channel settings
     DEFAULT_GLOBAL_CHANNEL = 1  # 1-indexed for user-friendliness
@@ -52,21 +48,12 @@ class Settings:
     ]
     
     def __init__(self, settings_path="settings.json"):
-        """
-        Initialize Settings with path to settings file.
-        
-        Args:
-            settings_path (str): Path to settings JSON file
-        """
         self.settings_path = settings_path
         self.settings = {}
         self.load_settings()
-        
+
     def load_settings(self):
-        """
-        Load settings from JSON file. If file doesn't exist or is invalid,
-        use default values and create a new settings file.
-        """
+        """Load from JSON; use defaults if file missing/invalid; create if needed."""
         try:
             with open(self.settings_path, 'r') as f:
                 self.settings = json.load(f)
@@ -82,12 +69,7 @@ class Settings:
             self._use_defaults()
     
     def _validate_settings(self):
-        """
-        Validate the loaded settings to ensure they have the correct structure.
-        
-        Returns:
-            bool: True if valid, False otherwise
-        """
+        """Check settings structure; return True if valid."""
         # Check if required keys exist
         required_keys = [
             "GLOBAL_CC_BANK", 

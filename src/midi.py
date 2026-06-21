@@ -5,15 +5,10 @@ import busio
 import board
 import usb_midi
 
-# TRS A 
 MIDI_AUX_TX_PIN = board.GP16
 MIDI_AUX_RX_PIN = board.GP17
 
 class MidiManager:
-    """
-    Manages sending and tracking MIDI CC and Aftertouch messages over both USB and TRS MIDI.
-    """
-
     def __init__(self):
         # Track last CC values by (cc_number, channel) tuple
         # This allows different channels to track independently
@@ -59,13 +54,7 @@ class MidiManager:
         )
 
     def receive_cc(self):
-        """
-        Check for incoming CC messages from both USB and TRS MIDI.
-        
-        Returns:
-            tuple: (cc_number, channel) if CC received, None otherwise.
-            Channel is 1-indexed (1-16) for user display.
-        """
+        """Check for incoming CC from USB or TRS MIDI. Returns (cc_number, channel) or None; channel is 1-indexed."""
         # Check USB MIDI
         msg = self.midi.receive()
         if msg is not None and isinstance(msg, ControlChange):
@@ -79,13 +68,7 @@ class MidiManager:
         return None
 
     def receive_cc_or_at(self):
-        """
-        Check for incoming CC or Channel Aftertouch messages from both USB and TRS MIDI.
-        
-        Returns:
-            tuple: ("CC", cc_number, channel) or ("AT", value, channel) if received, None otherwise.
-            Channel is 1-indexed (1-16) for user display.
-        """
+        """Check for incoming CC or Aftertouch from USB or TRS. Returns ("CC", cc_num, ch) or ("AT", value, ch) or None; channel is 1-indexed."""
         # Check USB MIDI
         msg = self.midi.receive()
         if msg is not None:
@@ -105,10 +88,7 @@ class MidiManager:
         return None
     
     def flush_receive_buffer(self):
-        """
-        Drain any pending messages from both USB and TRS MIDI input buffers.
-        Call this before starting learn mode to avoid reading stale messages.
-        """
+        """Drain pending messages from both USB and TRS MIDI input buffers. Call before learn mode to avoid stale messages."""
         # Drain USB MIDI buffer
         while self.midi.receive() is not None:
             pass
@@ -118,30 +98,12 @@ class MidiManager:
             pass
 
     def has_cc_value_changed(self, cc_number, channel, cc_value):
-        """
-        Checks whether the given CC number's value differs from the last value sent
-        on the specified channel.
-        
-        Args:
-            cc_number (int): The CC number (0-127)
-            channel (int): The MIDI channel (0-indexed, 0-15)
-            cc_value (int): The CC value to check
-            
-        Returns:
-            bool: True if value changed or never sent, False otherwise
-        """
+        """True if cc_value differs from last sent on this (cc_number, channel), or never sent before."""
         key = (cc_number, channel)
         return self.last_cc_values_sent.get(key, -1) != cc_value
 
     def send_cc(self, cc_list_with_channels, cc_value):
-        """
-        Sends Control Change messages for all given CC numbers with their channels,
-        but only if their values changed.
-        
-        Args:
-            cc_list_with_channels: List of (cc_number, channel) tuples
-            cc_value (int): The CC value to send (0-127)
-        """
+        """Send CC messages for all (cc_number, channel) tuples, but only if value changed."""
         if self.output_muted:
             return
         for cc_number, channel in cc_list_with_channels:
@@ -155,51 +117,18 @@ class MidiManager:
                 self.trs_midi.send(cc_msg, channel=channel)
 
     def get_last_cc_value_sent(self, cc_number, channel):
-        """
-        Retrieves the last CC value sent for a specified CC number and channel.
-
-        Args:
-            cc_number (int): CC number to look up.
-            channel (int): MIDI channel (0-indexed, 0-15)
-
-        Returns:
-            int: The last CC value sent for that CC number/channel, or 16 if never sent.
-        """
+        """Return last CC value sent for (cc_number, channel), or 16 if never sent."""
         key = (cc_number, channel)
         return self.last_cc_values_sent.get(key, 16)
     
     # ==================== Aftertouch Methods ====================
     
     def has_aftertouch_value_changed(self, channel, pressure):
-        """
-        Checks whether the given aftertouch value differs from the last value sent
-        on the specified channel.
-        
-        Args:
-            channel (int): The MIDI channel (0-indexed, 0-15)
-            pressure (int): The aftertouch pressure value to check (0-127)
-            
-        Returns:
-            bool: True if value changed or never sent, False otherwise
-        """
+        """True if pressure differs from last sent on this channel, or never sent before."""
         return self.last_aftertouch_values_sent.get(channel, -1) != pressure
     
     def send_aftertouch(self, channels, pressure, slider_idx=0, page_idx=0, bank_idx=0):
-        """
-        Sends Channel Aftertouch (Channel Pressure) messages for all given channels,
-        but only if their values changed.
-        
-        Note: Channel Aftertouch is a single pressure value per channel.
-        Multiple sliders on the same channel will share the same aftertouch value.
-        Per-slider tracking is maintained separately for LED/pickup behavior.
-        
-        Args:
-            channels: List of channels (0-indexed) to send to
-            pressure (int): The pressure value to send (0-127)
-            slider_idx (int): Index of the slider (0-3) for per-slider tracking
-            page_idx (int): Page index (0-3) for per-slider tracking
-            bank_idx (int): Bank index (0-3) for per-slider tracking
-        """
+        """Send Aftertouch to channels if value changed. Per-slider tracking for LED/pickup; channel-level MIDI output."""
         if self.output_muted:
             return
         # Track per-slider for LED/pickup purposes
@@ -214,18 +143,7 @@ class MidiManager:
                 self.trs_midi.send(at_msg, channel=channel)
     
     def get_last_at_value_per_slider(self, slider_idx, page_idx, bank_idx):
-        """
-        Retrieves the last aftertouch value sent for a specific slider/page/bank combo.
-        Used for LED display and pickup mode behavior.
-
-        Args:
-            slider_idx (int): Slider index (0-3)
-            page_idx (int): Page index (0-3)
-            bank_idx (int): Bank index within the page (0-3), or -1 for global
-
-        Returns:
-            int: The last AT value sent for that slider/page/bank, or 16 if never sent.
-        """
+        """Return last AT value for slider/page/bank, or 16 if never sent. Used for LED and pickup mode."""
         key = (slider_idx, page_idx, bank_idx)
         return self.last_at_values_per_slider.get(key, 16)
 
