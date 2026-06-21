@@ -10,7 +10,7 @@ The LumaFader 68 is a compact MIDI controller featuring four long-throw faders, 
 
 ## Links
 
-**[Download Latest Firmware Here](https://github.com/derrickthomin/Midi-Slider-Cherry/releases/tag/v1.3)**
+**[Download Latest Firmware Here](https://github.com/derrickthomin/Midi-Slider-Cherry/releases/latest)**
 
 *   **Web Config Utility:** [Open Web Config](https://derrickthomin.github.io/Midi-Slider-Cherry/) — configure your LumaFader from the browser (Chrome/Edge, requires Web Serial)
 *   **Project Writeup:** [www.djbajablast.com/post/lumafader68](https://www.djbajablast.com/post/lumafader68)
@@ -20,7 +20,7 @@ The LumaFader 68 is a compact MIDI controller featuring four long-throw faders, 
 
 ## What's New
 V1.3 (June 2026)
-- **Record Modet** - New mode for recording slider movements to pads and playing them back
+- **Record Mode** - New mode for recording slider movements to pads and playing them back
 - **MIDI Learn** - Efficiently map hardware device knobs and sliders 
 
 V 1.2 (April 2026)
@@ -50,7 +50,7 @@ By default, all page/bank channels are empty, so everything uses `GLOBAL_CHANNEL
 
 Any channel field can target multiple MIDI channels at once using the `|` separator (e.g. `"1|2|3"`). This sends the same CC or aftertouch message to all specified channels simultaneously.
 
-For example you can set `GLOBAL_CHANNEL`1` to `"1|2|3|4"`
+For example you can set `GLOBAL_CHANNEL` to `"1|2|3|4"`.
 
 ---
 
@@ -63,7 +63,7 @@ For example you can set `GLOBAL_CHANNEL`1` to `"1|2|3|4"`
 
 ### Locate the Boot Button
 
-The boot button is on the bottom PCB. See the image below for where it is located. I usually just stick a screwdriver through the hole in the case for the USB and use that to press the button. Alternaltivly you can take the top panel off with an m3 hex key.
+The boot button is on the bottom PCB. See the image below for where it is located. I usually just stick a screwdriver through the hole in the case for the USB and use that to press the button. Alternatively you can take the top panel off with an m3 hex key.
 
 <img width="450" height="" alt="Show Boot Button" src="https://github.com/user-attachments/assets/2fdeeb8c-3297-4982-aabe-627f1dcd7ce0" />
 
