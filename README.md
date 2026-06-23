@@ -19,7 +19,7 @@ The LumaFader 68 is a compact MIDI controller featuring four long-throw faders, 
 ---
 
 ## What's New
-V1.3 (June 2026)
+V1.4 (June 2026)
 - **Record Mode** - New mode for recording slider movements to pads and playing them back
 - **MIDI Learn** - Efficiently map hardware device knobs and sliders 
 
